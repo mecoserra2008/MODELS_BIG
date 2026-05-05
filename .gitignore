@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+data/raw/
+data/factors/
+UK/*_executed.ipynb
+UK/*.aux
+UK/*.log
+UK/*.out
+UK/*.synctex.gz

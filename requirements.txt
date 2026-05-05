@@ -1,0 +1,11 @@
+fredapi>=0.5.2
+requests>=2.31
+pandas>=2.0
+numpy>=1.24
+scipy>=1.11
+statsmodels>=0.14
+matplotlib>=3.7
+seaborn>=0.13
+jupyterlab>=4.0
+openpyxl>=3.1
+python-dotenv>=1.0

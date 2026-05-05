@@ -1,0 +1,256 @@
+\documentclass[11pt,a4paper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage[margin=2.2cm, top=2cm, bottom=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{tikz}
+\usepackage{enumitem}
+\usepackage{multicol}
+\usepackage{tabularx}
+
+% BIG Bank orange
+\definecolor{bigorange}{RGB}{255,130,0}
+\definecolor{biglightorange}{RGB}{255,180,80}
+\definecolor{biggrey}{RGB}{60,60,60}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=bigorange,
+    urlcolor=bigorange,
+    citecolor=biggrey
+}
+
+% Header/Footer
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{bigorange}\leaders\hrule height \headrulewidth\hfill}}
+\fancyhead[L]{\small\color{biggrey} Banco BIG $|$ Rates Research}
+\fancyhead[R]{\small\color{biggrey} May 2026}
+\fancyfoot[C]{\small\color{biggrey}\thepage}
+
+\begin{document}
+
+% ============================================================
+% COVER PAGE
+% ============================================================
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture, overlay]
+    % Orange top block
+    \fill[bigorange] (current page.north west) rectangle ([yshift=-9cm]current page.north east);
+    % White diagonal accent
+    \fill[white, opacity=0.15] ([yshift=-3cm]current page.north west) -- ([yshift=-7cm]current page.north west) -- ([yshift=-5cm]current page.north east) -- ([yshift=-1cm]current page.north east) -- cycle;
+    % Bottom orange strip
+    \fill[bigorange] ([yshift=1.5cm]current page.south west) rectangle (current page.south east);
+\end{tikzpicture}
+
+\vspace*{1cm}
+\begin{center}
+    \includegraphics[width=4.5cm]{../Logo-BIG.png}
+\end{center}
+
+\vspace{3.5cm}
+
+\begin{center}
+    {\Huge\bfseries\color{biggrey} Interest Rate Spillovers}\\[0.4cm]
+    {\Huge\bfseries\color{biggrey} to the UK Gilt Curve}\\[1.0cm]
+    {\Large\color{biggrey} VAR Analysis of Cross-Market Shock Transmission}\\[0.3cm]
+    {\Large\color{biggrey} US \& EU $\rightarrow$ UK Level, Slope, Curvature}\\[2.0cm]
+    {\large\color{biggrey} Rates Research $|$ 5 May 2026}
+\end{center}
+
+\vfill
+
+\begin{tikzpicture}[remember picture, overlay]
+    \node[anchor=south, yshift=2.0cm] at (current page.south) {
+        \color{white}\small\bfseries Banco BIG $|$ Institutional Research
+    };
+\end{tikzpicture}
+
+\newpage
+
+% ============================================================
+% PAGE 2: MODEL & RESULTS
+% ============================================================
+
+\section*{Methodology: VAR on Nelson-Siegel Factors}
+
+We decompose the UK, US, and Euro-area government yield curves into three latent factors via the Nelson-Siegel model:
+\begin{equation*}
+    y(\tau) = \underbrace{\beta_1}_{\text{Level}} + \underbrace{\beta_2 \cdot \frac{1-e^{-\lambda\tau}}{\lambda\tau}}_{\text{Slope}} + \underbrace{\beta_3 \left(\frac{1-e^{-\lambda\tau}}{\lambda\tau} - e^{-\lambda\tau}\right)}_{\text{Curvature}}
+\end{equation*}
+
+\noindent where $\lambda=0.10$ (optimised by RMSE). Factors are extracted daily from 6 maturities (1Y--20Y) for each region, then resampled to weekly frequency. A 9-variable VAR(1) is estimated on:
+
+\smallskip
+\noindent\textbf{Cholesky ordering:} US$_{\text{Level}}$ $\rightarrow$ US$_{\text{Slope}}$ $\rightarrow$ US$_{\text{Curv}}$ $\rightarrow$ EU$_{\text{Level}}$ $\rightarrow$ EU$_{\text{Slope}}$ $\rightarrow$ EU$_{\text{Curv}}$ $\rightarrow$ UK$_{\text{Level}}$ $\rightarrow$ UK$_{\text{Slope}}$ $\rightarrow$ UK$_{\text{Curv}}$
+
+\smallskip
+\noindent Rationale: US rates are most exogenous (global reserve currency); UK is the ``receiver'' we focus on.
+
+\vspace{-0.2cm}
+\subsection*{Key VAR Coefficients (UK equations)}
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lccc}
+\toprule
+\textbf{Regressor (lag-1)} & \textbf{UK Level} & \textbf{UK Slope} & \textbf{UK Curvature} \\
+\midrule
+US Level  & -- & -- & -- \\
+US Slope  & $+0.074^{**}$ (via US eq) & -- & -- \\
+EU Level  & $+0.075^{**}$ (via US eq) & -- & -- \\
+Own lag   & $0.989^{***}$ & $0.946^{***}$ & $0.939^{***}$ \\
+\midrule
+\multicolumn{4}{l}{\textit{High persistence ($>$0.93) in all UK factors confirms near-unit-root dynamics.}} \\
+\multicolumn{4}{l}{\textit{Cross-border transmission operates mainly through contemporaneous correlation.}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\vspace{-0.2cm}
+\subsection*{Granger Causality (at 5\% level)}
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lccc}
+\toprule
+\textbf{Causing block} & \textbf{$\rightarrow$ UK Level} & \textbf{$\rightarrow$ UK Slope} & \textbf{$\rightarrow$ UK Curvature} \\
+\midrule
+US (Level+Slope+Curv) & \textbf{Significant} ($p$=0.048) & Not sig. ($p$=0.35) & \textbf{Significant} ($p$=0.022) \\
+EU (Level+Slope+Curv) & Not sig. ($p$=0.89) & Not sig. ($p$=0.91) & Not sig. ($p$=0.59) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Interpretation:} US rates \textit{predictively lead} UK Level and Curvature with a 1-week lag. EU rates do \textit{not} Granger-cause UK factors---their influence is purely contemporaneous (same-day co-movement captured in the residual correlation structure).
+
+\vspace{0.1cm}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{fig_factors.png}
+    \vspace{-0.3cm}
+    \caption{\small Nelson-Siegel factors for UK, US, EU (2004--2026). The Level factor co-moves tightly across regions; Slope diverges during different monetary policy cycles; Curvature is noisier but shows global risk-on/risk-off episodes.}
+\end{figure}
+
+\newpage
+
+% ============================================================
+% PAGE 3: IRFs AND FEVD
+% ============================================================
+
+\section*{Shock Propagation: How Foreign Rate Shocks Hit the UK Curve}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{fig_irf.png}
+    \vspace{-0.3cm}
+    \caption{\small Orthogonalised IRFs: each panel shows the response of a UK factor (row) to a 1-s.d. shock in a foreign factor (column) over 40 weeks. Blue shading = 95\% bootstrap CI.}
+\end{figure}
+
+\noindent\textbf{Reading the IRF grid:}
+\begin{itemize}[nosep, leftmargin=1.2em]
+    \item \textbf{US Level $\rightarrow$ UK Level:} A shock to long-run US rates raises UK long rates by $\sim$0.15 s.d. on impact, persisting for 30+ weeks. This is the ``global real rate'' channel---Treasury sell-offs transmit directly to gilts.
+    \item \textbf{US Curvature $\rightarrow$ UK Curvature:} The strongest single spillover. A US term-premium shock propagates immediately and almost 1-for-1 to the UK belly of the curve, reflecting shared risk appetite and carry positioning.
+    \item \textbf{EU $\rightarrow$ UK:} Weaker individually but statistically significant on impact for Level and Curvature. EU shocks decay faster than US shocks (fully absorbed within 15 weeks).
+    \item \textbf{Slope spillovers:} Relatively muted. Monetary policy stance (slope) remains largely idiosyncratic---BoE, Fed, and ECB diverge.
+\end{itemize}
+
+\vspace{0.2cm}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{fig_fevd.png}
+    \vspace{-0.3cm}
+    \caption{\small Forecast Error Variance Decomposition by region. At 52 weeks, foreign shocks explain 35\% of UK Level variance, 36\% of Slope, and 60\% of Curvature.}
+\end{figure}
+
+\vspace{-0.1cm}
+\subsection*{FEVD Summary at 52-Week Horizon}
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lccc}
+\toprule
+ & \textbf{US share (\%)} & \textbf{EU share (\%)} & \textbf{UK own (\%)} \\
+\midrule
+UK Level      & 29.8 & 4.9 & 65.2 \\
+UK Slope      & 29.7 & 6.5 & 63.8 \\
+UK Curvature  & 48.2 & 12.3 & 39.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Key takeaway:} The UK curve is \textit{not} insulated from global moves. At the 1-year horizon, nearly half of the variation in UK term premia (curvature) is driven by US Treasuries. For trading, this means: large UST sell-offs (bear steepeners, duration supply shocks) mechanically propagate to gilts, particularly in the 5Y--10Y belly.
+
+\newpage
+
+% ============================================================
+% PAGE 4: MARKET CONTEXT & OUTLOOK
+% ============================================================
+
+\section*{UK Gilt Market Context: May 2026}
+
+\subsection*{Macro \& Fiscal Backdrop}
+
+\begin{itemize}[nosep, leftmargin=1.2em]
+    \item \textbf{Inflation:} CPI at 3.3\% (March 2026), up from 3.0\% in February. Energy-driven (Iran war oil shock, Ofgem cap $\uparrow$20\% from July). BoE projects 3.0--3.5\% through Q3 2026.
+    \item \textbf{Growth:} GDP grew 0.5\% in the three months to February 2026; OBR forecasts full-year 2026 growth at 1.1\% (down from 1.4\% in 2025).
+    \item \textbf{BoE MPC (30 April):} Held at 3.75\%, 8--1 vote (1 member voted for a hike). Markets now price \textit{no cuts} in 2026, with $\sim$3 hikes priced.
+    \item \textbf{Gilt issuance:} DMO remit for 2026--27 set at \pounds252.1bn (above consensus of \pounds245bn). Heavy tilt to short/medium maturities. Revised upward on 23 April 2026.
+    \item \textbf{Debt:} PSND at 94.3\% of GDP, forecast to rise to 96.1\%. OBR flags ``fundamentally unsustainable'' trajectory without further consolidation.
+\end{itemize}
+
+\subsection*{Recent Market Price Action}
+
+\begin{itemize}[nosep, leftmargin=1.2em]
+    \item 10Y gilt yield: \textbf{5.06\%} (30 Apr), highest since July 2008.
+    \item 30Y gilt yield: \textbf{5.74\%} (5 May), highest since 1998 --- up 13bp on the day.
+    \item The sell-off accelerated after the MPC hawkish dissent and municipal election uncertainty.
+    \item The April US--Iran ceasefire temporarily pulled yields 15--20bp lower; unwinding of ceasefire optimism is now reversing that move.
+\end{itemize}
+
+\subsection*{Upcoming Data \& Events (May--June 2026)}
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\textwidth}{lXl}
+\toprule
+\textbf{Date} & \textbf{Event} & \textbf{Impact} \\
+\midrule
+8 May & UK local election results & Political risk / Labour fiscal credibility \\
+14 May & ONS CPI (April) & Energy pass-through; key for BoE expectations \\
+15 May & ONS Labour Market (Mar) & Wage growth vs. target \\
+22 May & ONS GDP monthly (March) & Activity vs. rate hike risk \\
+Late May & DMO gilt syndication (long-end) & Supply pressure on 20Y+ \\
+18 June & BoE MPC decision & Next rate decision --- hike vs. hold \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection*{Key Drivers Ahead}
+
+\begin{enumerate}[nosep, leftmargin=1.4em]
+    \item \textbf{US Treasury moves remain the dominant risk factor.} Our VAR shows 30\%+ of UK Level variance is explained by USTs. Any further UST sell-off (e.g., on US fiscal concerns or Fed repricing) will mechanically widen gilt yields.
+    \item \textbf{Energy prices / Iran situation.} A re-escalation would push UK CPI above 3.5\%, forcing BoE hikes and steepening the curve. Ceasefire durability is the swing factor.
+    \item \textbf{Gilt supply.} The \pounds252bn remit is front-loaded with auctions. Poor bid-to-cover ratios would signal absorption stress, particularly in the 10--20Y sector where foreign spillover is highest.
+    \item \textbf{BoE rate path.} The 8--1 split suggests a June hike is live. Hawkish repricing would flatten the slope (short-end up, long-end anchored by growth concerns).
+    \item \textbf{Fiscal credibility.} NIESR flags gilt market ``derailment'' risk. Any revision to spending plans or OBR downgrades could trigger a repeat of the 2022 LDI episode in the long end.
+\end{enumerate}
+
+\vspace{0.3cm}
+\noindent\rule{\textwidth}{0.4pt}
+{\footnotesize\color{biggrey} \textbf{Data sources:} Bank of England IADB (UK spot curve), FRED (US Treasuries), ECB Statistical Data Warehouse (EU AAA). Model: VAR(1) on weekly Nelson-Siegel factors, sample Sep 2004 -- Apr 2026 (1,130 obs). This document is for informational purposes only and does not constitute investment advice.}
+
+\end{document}
