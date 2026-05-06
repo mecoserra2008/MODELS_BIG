@@ -182,7 +182,7 @@ class MacroQuantileRegression:
         df = pd.DataFrame(preds)
 
         # Monotonic rearrangement: sort quantiles per row
-        values = df.values
+        values = df.values.copy()
         for i in range(len(values)):
             values[i] = np.sort(values[i])
         df = pd.DataFrame(values, columns=df.columns, index=df.index)

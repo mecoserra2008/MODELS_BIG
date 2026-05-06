@@ -1,0 +1,74 @@
+{
+  "US_NFP": {
+    "cv_rmse": 313.5410558284543,
+    "test_rmse": 346.1412573314844,
+    "test_r2": -8.27338090989209,
+    "overfit_passed": "True",
+    "overfit_ratio": 1.1039742671554822,
+    "clf_accuracy": 0.16666666666666666,
+    "clf_logloss": 3.488453038750207,
+    "n_train": 79,
+    "n_test": 36,
+    "n_features": 46
+  },
+  "US_UNRATE": {
+    "cv_rmse": 1.2275667793279048,
+    "test_rmse": 0.4065458790794947,
+    "test_r2": -0.8530793607059848,
+    "overfit_passed": "True",
+    "overfit_ratio": 0.33118025503179654,
+    "clf_accuracy": 0.4,
+    "clf_logloss": 1.142897291562003,
+    "n_train": 216,
+    "n_test": 35,
+    "n_features": 22
+  },
+  "US_AHE_MOM": {
+    "cv_rmse": 0.29009450153306576,
+    "test_rmse": 0.16817334875253284,
+    "test_r2": -0.8307625329318189,
+    "overfit_passed": "True",
+    "overfit_ratio": 0.5797191873882934,
+    "clf_accuracy": 0.5,
+    "clf_logloss": 1.0404012420662052,
+    "n_train": 199,
+    "n_test": 36,
+    "n_features": 20
+  },
+  "US_UMCSENT": {
+    "cv_rmse": 10.106450736328314,
+    "test_rmse": 19.031348450761257,
+    "test_r2": -5.053049840249171,
+    "overfit_passed": "False",
+    "overfit_ratio": 1.8830892216357906,
+    "clf_accuracy": 0.25,
+    "clf_logloss": 1.5085393360274282,
+    "n_train": 79,
+    "n_test": 36,
+    "n_features": 26
+  },
+  "US_MICH_INF": {
+    "cv_rmse": 0.39888263112028144,
+    "test_rmse": 1.2588312293920327,
+    "test_r2": -0.6128814901706423,
+    "overfit_passed": "False",
+    "overfit_ratio": 3.1558938165368446,
+    "clf_accuracy": 0.4444444444444444,
+    "clf_logloss": 1.169218683846651,
+    "n_train": 274,
+    "n_test": 36,
+    "n_features": 26
+  },
+  "BR_IPCA_YOY": {
+    "cv_rmse": 0.4133043629027151,
+    "test_rmse": 0.3277195617863142,
+    "test_r2": -0.44709925348651125,
+    "overfit_passed": "True",
+    "overfit_ratio": 0.792925483305777,
+    "clf_accuracy": 0.3888888888888889,
+    "clf_logloss": 1.1611389376579233,
+    "n_train": 216,
+    "n_test": 36,
+    "n_features": 22
+  }
+}
