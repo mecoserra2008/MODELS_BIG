@@ -49,7 +49,7 @@
 
 \begin{center}
     {\Huge\bfseries\color{biggrey} Interest Rate Spillovers}\\[0.4cm]
-    {\Huge\bfseries\color{biggrey} to the UK Gilt Curve}\\[1.0cm]
+    {\Huge\bfseries\color{biggrey} to the Brazilian DI Curve}\\[1.0cm]
     {\Large\color{biggrey} 5-Country VAR: US, EU, CA, BR, UK}\\[0.3cm]
     {\Large\color{biggrey} Nelson-Siegel Level, Slope, Curvature}\\[2.0cm]
     {\large\color{biggrey} Rates Research $|$ 5 May 2026}
@@ -70,10 +70,10 @@
 We decompose five government yield curves (US, EU, CA, BR, UK) into Level, Slope, and Curvature via Nelson-Siegel ($\lambda=0.10$). A 15-variable VAR(1) is estimated on weekly data (2005--2026, $N=1112$ obs).
 
 \smallskip
-\noindent\textbf{Cholesky ordering:} US $\rightarrow$ EU $\rightarrow$ CA $\rightarrow$ BR $\rightarrow$ UK
+\noindent\textbf{Cholesky ordering:} US $\rightarrow$ EU $\rightarrow$ CA $\rightarrow$ UK $\rightarrow$ BR
 
 \smallskip
-\noindent Rationale: UK is placed last as the ``receiver'' of interest. US is most exogenous (global reserve currency).
+\noindent Rationale: BR is placed last as the ``receiver'' of interest. US is most exogenous (global reserve currency).
 
 \subsection*{Granger Causality Tests ($\alpha=5\%$)}
 
@@ -81,20 +81,20 @@ We decompose five government yield curves (US, EU, CA, BR, UK) into Level, Slope
 \centering\small
 \begin{tabular}{llccc}
 \toprule
-\textbf{Source} & \textbf{UK Factor} & \textbf{F-stat} & \textbf{p-value} & \textbf{Sig.?} \\
+\textbf{Source} & \textbf{BR Factor} & \textbf{F-stat} & \textbf{p-value} & \textbf{Sig.?} \\
 \midrule
-    US & Level & 2.45 & 0.062 & Not sig. \\
-    US & Slope & 1.22 & 0.300 & Not sig. \\
-    US & Curvature & 1.00 & 0.389 & Not sig. \\
-    EU & Level & 1.25 & 0.289 & Not sig. \\
-    EU & Slope & 1.17 & 0.321 & Not sig. \\
-    EU & Curvature & 1.04 & 0.372 & Not sig. \\
-    CA & Level & 2.52 & 0.056 & Not sig. \\
-    CA & Slope & 2.44 & 0.062 & Not sig. \\
-    CA & Curvature & 1.06 & 0.363 & Not sig. \\
-    BR & Level & 2.52 & 0.056 & Not sig. \\
-    BR & Slope & 1.42 & 0.234 & Not sig. \\
-    BR & Curvature & 1.61 & 0.185 & Not sig. \\
+    US & Level & 2.36 & 0.070 & Not sig. \\
+    US & Slope & 2.64 & 0.048 & \textbf{Sig.} \\
+    US & Curvature & 2.60 & 0.050 & Not sig. \\
+    EU & Level & 1.25 & 0.290 & Not sig. \\
+    EU & Slope & 1.27 & 0.283 & Not sig. \\
+    EU & Curvature & 2.50 & 0.058 & Not sig. \\
+    CA & Level & 2.94 & 0.032 & \textbf{Sig.} \\
+    CA & Slope & 3.24 & 0.021 & \textbf{Sig.} \\
+    CA & Curvature & 3.11 & 0.025 & \textbf{Sig.} \\
+    UK & Level & 2.13 & 0.095 & Not sig. \\
+    UK & Slope & 2.18 & 0.088 & Not sig. \\
+    UK & Curvature & 2.57 & 0.053 & Not sig. \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -103,19 +103,19 @@ We decompose five government yield curves (US, EU, CA, BR, UK) into Level, Slope
     \centering
     \includegraphics[width=\textwidth]{fig_factors.png}
     \vspace{-0.3cm}
-    \caption{\small Nelson-Siegel factors for all 5 countries (2005--2026). UK highlighted as the target curve.}
+    \caption{\small Nelson-Siegel factors for all 5 countries (2005--2026). BR highlighted as the target curve.}
 \end{figure}
 
 \newpage
 
 % PAGE 3: IRFs AND FEVD
-\section*{Shock Propagation to United Kingdom}
+\section*{Shock Propagation to Brazil}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{fig_irf.png}
     \vspace{-0.3cm}
-    \caption{\small Orthogonalised IRFs: UK factor responses to foreign shocks over 40 weeks. Blue shading = 95\% bootstrap CI.}
+    \caption{\small Orthogonalised IRFs: BR factor responses to foreign shocks over 40 weeks. Blue shading = 95\% bootstrap CI.}
 \end{figure}
 
 \subsection*{FEVD at 52-Week Horizon (\% of variance)}
@@ -126,9 +126,9 @@ We decompose five government yield curves (US, EU, CA, BR, UK) into Level, Slope
 \toprule
  & \textbf{US} & \textbf{EU} & \textbf{CA} & \textbf{BR} & \textbf{UK} \\
 \midrule
-    UK Level & 29.4 & 4.4 & 11.5 & 6.5 & 48.2 \\
-    UK Slope & 28.3 & 5.9 & 7.9 & 2.1 & 55.8 \\
-    UK Curvature & 44.2 & 11.3 & 9.7 & 3.4 & 31.3 \\
+    BR Level & 7.4 & 7.9 & 7.5 & 74.6 & 2.6 \\
+    BR Slope & 4.9 & 10.0 & 7.9 & 72.0 & 5.2 \\
+    BR Curvature & 3.6 & 10.0 & 6.0 & 72.0 & 8.4 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -137,38 +137,31 @@ We decompose five government yield curves (US, EU, CA, BR, UK) into Level, Slope
     \centering
     \includegraphics[width=\textwidth]{fig_fevd.png}
     \vspace{-0.3cm}
-    \caption{\small FEVD: share of UK factor forecast error variance by source country at horizons 1--52 weeks.}
+    \caption{\small FEVD: share of BR factor forecast error variance by source country at horizons 1--52 weeks.}
 \end{figure}
 
 \newpage
 
 % PAGE 4: MARKET CONTEXT
-\section*{United Kingdom: Market Context (May 2026)}
+\section*{Brazil: Market Context (May 2026)}
 
 
 \subsection*{Macro \& Fiscal Backdrop}
 \begin{itemize}[nosep, leftmargin=1.2em]
-    \item \textbf{Inflation:} CPI at 3.3\% (March 2026), up from 3.0\% in February. Energy-driven (Iran conflict oil shock, Ofgem cap $\uparrow$20\% from July). BoE projects 3.0--3.5\% through Q3 2026.
-    \item \textbf{Growth:} GDP grew 0.5\% in three months to Feb 2026; OBR forecasts full-year 2026 at 1.1\%.
-    \item \textbf{BoE MPC (30 Apr):} Held at 3.75\%, 8--1 vote (1 member voted for a hike). Markets price $\sim$3 hikes in 2026.
-    \item \textbf{Gilt issuance:} DMO 2026--27 remit at \pounds252.1bn, above consensus. Heavy tilt to short/medium maturities.
-    \item \textbf{Debt:} PSND at 94.3\% of GDP, forecast to rise to 96.1\%. OBR flags unsustainable trajectory.
-\end{itemize}
-
-\subsection*{Recent Market Action}
-\begin{itemize}[nosep, leftmargin=1.2em]
-    \item 10Y gilt: 5.06\% (30 Apr), highest since July 2008.
-    \item 30Y gilt: 5.74\% (5 May), highest since 1998.
-    \item Sell-off accelerated after MPC hawkish dissent and municipal election uncertainty.
+    \item \textbf{Inflation:} IPCA at 5.5\% (Mar 2026), above target ceiling (4.5\%). Food and energy pressures persistent.
+    \item \textbf{Growth:} GDP grew 2.1\% in 2025. Fiscal stimulus supporting consumption.
+    \item \textbf{COPOM:} Selic at 14.75\%, hiked 50bp in March. Forward guidance signals further tightening.
+    \item \textbf{Fiscal:} Primary deficit at 0.8\% of GDP. New fiscal framework credibility under pressure.
+    \item \textbf{FX:} BRL/USD at 5.80, depreciation adds to imported inflation.
 \end{itemize}
 
 \subsection*{Key Drivers Ahead}
 \begin{enumerate}[nosep, leftmargin=1.4em]
-    \item \textbf{UST moves} dominate UK rate variance ($\sim$29\%). Any further UST sell-off mechanically widens gilt yields.
-    \item \textbf{Energy/Iran:} Re-escalation pushes CPI above 3.5\%, forcing BoE hikes.
-    \item \textbf{Gilt supply:} \pounds252bn remit is front-loaded. Poor bid-to-cover signals absorption stress.
-    \item \textbf{BoE rate path:} 8--1 split suggests June hike is live.
-    \item \textbf{Fiscal credibility:} NIESR flags gilt market ``derailment'' risk.
+    \item \textbf{Highest own-determination:} BR curve is the most insular (73\% own-variance across all factors). Domestic monetary policy and fiscal credibility dominate.
+    \item \textbf{Limited foreign spillover:} No single foreign block explains more than 10\% of BR variance. Brazil's high carry and idiosyncratic risk dominate.
+    \item \textbf{EU as largest foreign driver} ($\sim$10\%): Likely via risk sentiment and European investor flows into EM.
+    \item \textbf{Fiscal credibility:} The binding constraint. Any spending cap revision would widen DI rates sharply.
+    \item \textbf{Selic path:} Market expects terminal rate of 15.25\%. Any overshoot reprices the entire curve.
 \end{enumerate}
 
 

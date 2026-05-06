@@ -497,23 +497,199 @@ def fetch_eu_yields(
 # Alignment
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Canada — Bank of Canada
+# ---------------------------------------------------------------------------
+
+BOC_SERIES = {
+    2: "BD.CDN.2YR.DQ.YLD",
+    3: "BD.CDN.3YR.DQ.YLD",
+    5: "BD.CDN.5YR.DQ.YLD",
+    7: "BD.CDN.7YR.DQ.YLD",
+    10: "BD.CDN.10YR.DQ.YLD",
+    30: "BD.CDN.LONG.DQ.YLD",
+}
+
+
+def fetch_ca_yields(
+    start_date: str = "2000-01-01",
+    end_date: str = "2026-04-30",
+    cache_path: str | None = None,
+    force_download: bool = False,
+) -> pd.DataFrame:
+    """
+    Download Canadian government benchmark bond yields from Bank of Canada
+    Valet API.
+
+    Available maturities: 2Y, 3Y, 5Y, 7Y, 10Y, 30Y (Long-term).
+
+    Returns DataFrame with columns CA_2Y, CA_3Y, CA_5Y, CA_7Y, CA_10Y, CA_30Y.
+    """
+    if cache_path is None:
+        cache_path = RAW_DIR / "ca_yields.csv"
+    else:
+        cache_path = Path(cache_path)
+
+    if cache_path.exists() and not force_download:
+        df = pd.read_csv(cache_path, index_col=0, parse_dates=True)
+        return df.loc[start_date:end_date]
+
+    import time
+
+    series_data = {}
+    for maturity, series_id in BOC_SERIES.items():
+        url = f"https://www.bankofcanada.ca/valet/observations/{series_id}/csv"
+        params = {"start_date": start_date, "end_date": end_date}
+        print(f"  Fetching BoC {series_id}...")
+
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, params=params, timeout=60)
+                resp.raise_for_status()
+                break
+            except Exception as e:
+                if attempt < 2:
+                    time.sleep(2)
+                else:
+                    raise
+
+        # Parse BoC CSV: skip header lines until "OBSERVATIONS"
+        lines = resp.text.split("\n")
+        obs_start = None
+        for i, line in enumerate(lines):
+            if line.strip().startswith('"OBSERVATIONS"') or line.strip() == "OBSERVATIONS":
+                obs_start = i + 1
+                break
+
+        if obs_start is None:
+            raise ValueError(f"Could not find OBSERVATIONS section in BoC response for {series_id}")
+
+        # Read from observations header onward
+        obs_text = "\n".join(lines[obs_start:])
+        obs_df = pd.read_csv(io.StringIO(obs_text))
+        obs_df.columns = ["Date", "Value"]
+        obs_df["Date"] = pd.to_datetime(obs_df["Date"])
+        obs_df = obs_df.set_index("Date")
+        obs_df["Value"] = pd.to_numeric(obs_df["Value"], errors="coerce")
+
+        label = f"CA_{maturity}Y"
+        series_data[label] = obs_df["Value"]
+
+    df = pd.DataFrame(series_data)
+    df = df.sort_index()
+    df = df.loc[start_date:end_date]
+
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(cache_path)
+    print(f"CA yields cached to {cache_path} — shape {df.shape}")
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Brazil — IPEA / ANBIMA DI Curve
+# ---------------------------------------------------------------------------
+
+# ANBIMA pre-fixed (DI) yield curve tenors via IPEA API
+# Series: ANBIMA366_TJTLNX366 where X = years
+IPEA_BR_SERIES = {
+    1: "ANBIMA366_TJTLN1366",
+    3: "ANBIMA366_TJTLN3366",
+    6: "ANBIMA366_TJTLN6366",
+    12: "ANBIMA366_TJTLN12366",
+}
+
+
+def fetch_br_yields(
+    start_date: str = "2000-01-01",
+    end_date: str = "2026-04-30",
+    cache_path: str | None = None,
+    force_download: bool = False,
+) -> pd.DataFrame:
+    """
+    Download Brazilian pre-fixed (DI) yield curve from IPEA/ANBIMA.
+
+    Available tenors: 1Y, 3Y, 6Y, 12Y.
+    Yields are in annual DI convention (252 business day compounding),
+    expressed in percent (e.g., 14.3 = 14.3%).
+
+    Returns DataFrame with columns BR_1Y, BR_3Y, BR_6Y, BR_12Y.
+    """
+    if cache_path is None:
+        cache_path = RAW_DIR / "br_yields.csv"
+    else:
+        cache_path = Path(cache_path)
+
+    if cache_path.exists() and not force_download:
+        df = pd.read_csv(cache_path, index_col=0, parse_dates=True)
+        return df.loc[start_date:end_date]
+
+    import time
+
+    series_data = {}
+    for maturity, series_code in IPEA_BR_SERIES.items():
+        url = (
+            f"http://www.ipeadata.gov.br/api/odata4/"
+            f"ValoresSerie(SERCODIGO='{series_code}')"
+        )
+        print(f"  Fetching IPEA {series_code} ({maturity}Y)...")
+
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, timeout=60)
+                resp.raise_for_status()
+                break
+            except Exception as e:
+                if attempt < 2:
+                    time.sleep(2)
+                else:
+                    raise
+
+        data = resp.json()
+        records = data.get("value", [])
+
+        dates = []
+        values = []
+        for rec in records:
+            val = rec.get("VALVALOR")
+            if val is not None:
+                dt = pd.to_datetime(rec["VALDATA"][:10])
+                dates.append(dt)
+                values.append(float(val))
+
+        label = f"BR_{maturity}Y"
+        series_data[label] = pd.Series(values, index=dates, name=label)
+
+    df = pd.DataFrame(series_data)
+    df.index.name = "Date"
+    df = df.sort_index()
+    df = df.loc[start_date:end_date]
+
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(cache_path)
+    print(f"BR yields cached to {cache_path} — shape {df.shape}")
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Alignment (generalized)
+# ---------------------------------------------------------------------------
+
 def align_yield_data(
-    uk: pd.DataFrame,
-    us: pd.DataFrame,
-    eu: pd.DataFrame,
+    *yield_dfs: pd.DataFrame,
     freq: str | None = None,
     ffill_limit: int = 5,
 ) -> pd.DataFrame:
     """
-    Merge UK, US, EU yield DataFrames on their date index.
+    Merge any number of yield DataFrames on their date index.
 
     Parameters
     ----------
-    uk, us, eu : pd.DataFrame
+    *yield_dfs : pd.DataFrame
         Individual yield DataFrames with DatetimeIndex.
+        Column names must follow the {CC}_{TENOR} convention
+        (e.g., UK_10Y, US_5Y, BR_3Y).
     freq : str or None
         If provided, resample to this frequency (e.g., 'W-FRI' for weekly).
-        Uses last available observation in each period.
     ffill_limit : int
         Maximum number of consecutive NaN to forward-fill (handles holidays).
 
@@ -522,7 +698,7 @@ def align_yield_data(
     pd.DataFrame
         Combined DataFrame with all columns, NaN-filled gaps handled.
     """
-    combined = pd.concat([uk, us, eu], axis=1)
+    combined = pd.concat(yield_dfs, axis=1)
     combined = combined.sort_index()
 
     # Forward-fill small gaps from different holiday calendars
@@ -531,17 +707,15 @@ def align_yield_data(
     if freq is not None:
         combined = combined.resample(freq).last()
 
-    # Drop rows where any region has all NaN (start dates may differ)
-    # Keep rows where at least one column per region has data
-    uk_cols = [c for c in combined.columns if c.startswith("UK_")]
-    us_cols = [c for c in combined.columns if c.startswith("US_")]
-    eu_cols = [c for c in combined.columns if c.startswith("EU_")]
+    # Auto-detect region prefixes from column names
+    prefixes = sorted(set(c.split("_")[0] for c in combined.columns))
 
-    mask = (
-        combined[uk_cols].notna().any(axis=1)
-        & combined[us_cols].notna().any(axis=1)
-        & combined[eu_cols].notna().any(axis=1)
-    )
+    # Keep rows where every region has at least one non-NaN value
+    mask = pd.Series(True, index=combined.index)
+    for prefix in prefixes:
+        cols = [c for c in combined.columns if c.startswith(f"{prefix}_")]
+        if cols:
+            mask = mask & combined[cols].notna().any(axis=1)
     combined = combined[mask]
 
     return combined

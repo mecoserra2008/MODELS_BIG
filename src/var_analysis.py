@@ -16,6 +16,9 @@ from statsmodels.stats.stattools import durbin_watson
 # Variable ordering (Cholesky: most exogenous first)
 # ---------------------------------------------------------------------------
 
+FACTOR_NAMES = ["Level", "Slope", "Curvature"]
+
+# Legacy 3-country ordering (backward compat)
 VAR_ORDER = [
     "US_Level", "US_Slope", "US_Curvature",
     "EU_Level", "EU_Slope", "EU_Curvature",
@@ -23,44 +26,104 @@ VAR_ORDER = [
 ]
 
 
-def prepare_var_data(
-    uk_factors: pd.DataFrame,
-    us_factors: pd.DataFrame,
-    eu_factors: pd.DataFrame,
-    freq: str = "W-FRI",
-) -> pd.DataFrame:
+def build_var_order(countries: list[str], target: str) -> list[str]:
     """
-    Merge NS factors from 3 regions and resample to a common frequency.
+    Build Cholesky ordering: non-target countries first (in given order),
+    then target last (most endogenous).
 
     Parameters
     ----------
-    uk_factors, us_factors, eu_factors : DataFrame
-        Each with columns ['Level', 'Slope', 'Curvature'] and DatetimeIndex.
-    freq : str
-        Resample frequency. 'W-FRI' (weekly Friday) recommended.
+    countries : list of str
+        All country codes, e.g. ["US", "EU", "CA", "BR", "UK"].
+    target : str
+        The country to place last.
 
     Returns
     -------
-    DataFrame with 9 columns in Cholesky ordering, resampled, NaN-dropped.
+    list of str, e.g. ["US_Level", "US_Slope", ..., "UK_Curvature"]
     """
-    # Prefix columns by region
-    uk = uk_factors.add_prefix("UK_")
-    us = us_factors.add_prefix("US_")
-    eu = eu_factors.add_prefix("EU_")
+    ordered = [c for c in countries if c != target] + [target]
+    return [f"{c}_{f}" for c in ordered for f in FACTOR_NAMES]
 
-    combined = pd.concat([us, eu, uk], axis=1)
+
+def prepare_var_data(
+    factors_dict: dict[str, pd.DataFrame] | None = None,
+    *legacy_args,
+    target: str | None = None,
+    countries: list[str] | None = None,
+    freq: str = "W-FRI",
+    # Legacy positional args for backward compat
+    _uk_factors=None,
+    _us_factors=None,
+    _eu_factors=None,
+) -> pd.DataFrame:
+    """
+    Merge NS factors from multiple regions and resample.
+
+    Can be called in two ways:
+
+    New API:
+        prepare_var_data({"UK": uk_df, "US": us_df, ...}, target="UK")
+
+    Legacy API (backward compat):
+        prepare_var_data(uk_factors, us_factors, eu_factors, freq="W-FRI")
+
+    Parameters
+    ----------
+    factors_dict : dict mapping country code -> DataFrame with
+        columns ['Level', 'Slope', 'Curvature'].
+    target : str
+        Country code to place last in Cholesky ordering.
+    countries : list of str or None
+        Explicit ordering of non-target countries. If None, sorted alphabetically.
+    freq : str
+        Resample frequency.
+
+    Returns
+    -------
+    DataFrame with N*3 columns in Cholesky ordering.
+    """
+    # Handle legacy 3-positional-arg call:
+    # prepare_var_data(uk_factors, us_factors, eu_factors)
+    if factors_dict is not None and isinstance(factors_dict, pd.DataFrame):
+        # Called with positional DataFrames (old API)
+        uk_f = factors_dict
+        us_f = legacy_args[0] if len(legacy_args) > 0 else _us_factors
+        eu_f = legacy_args[1] if len(legacy_args) > 1 else _eu_factors
+        if len(legacy_args) > 2 and isinstance(legacy_args[2], str):
+            freq = legacy_args[2]
+        factors_dict = {"UK": uk_f, "US": us_f, "EU": eu_f}
+        if target is None:
+            target = "UK"
+
+    if factors_dict is None:
+        raise ValueError("Must provide factors_dict or positional DataFrames")
+
+    if target is None:
+        target = list(factors_dict.keys())[-1]
+
+    if countries is None:
+        countries = list(factors_dict.keys())
+
+    var_order = build_var_order(countries, target)
+
+    # Prefix and concatenate
+    dfs = []
+    for code in countries:
+        if code in factors_dict:
+            dfs.append(factors_dict[code].add_prefix(f"{code}_"))
+    combined = pd.concat(dfs, axis=1)
     combined = combined.sort_index()
 
-    # Resample to target frequency (last observation in each period)
     if freq is not None:
         combined = combined.resample(freq).last()
 
-    # Forward-fill small gaps, then drop remaining NaN
     combined = combined.ffill(limit=2)
     combined = combined.dropna()
 
-    # Reorder columns per Cholesky convention
-    combined = combined[VAR_ORDER]
+    # Reorder per Cholesky convention
+    available = [c for c in var_order if c in combined.columns]
+    combined = combined[available]
     return combined
 
 
@@ -254,6 +317,7 @@ def granger_causality_tests(
     var_results,
     causing: list[str],
     caused: list[str] | None = None,
+    target: str | None = None,
     signif: float = 0.05,
 ) -> pd.DataFrame:
     """
@@ -265,7 +329,9 @@ def granger_causality_tests(
     causing : list of str
         Variable names of potential causes.
     caused : list of str or None
-        Variables to test as effects. If None, tests all UK variables.
+        Variables to test as effects. If None, auto-generated from target.
+    target : str or None
+        Country code (e.g., "UK"). Used to build caused list if caused is None.
     signif : float
         Significance level.
 
@@ -274,7 +340,10 @@ def granger_causality_tests(
     DataFrame with columns: ['caused', 'causing', 'F_stat', 'p_value', 'significant']
     """
     if caused is None:
-        caused = ["UK_Level", "UK_Slope", "UK_Curvature"]
+        if target is not None:
+            caused = [f"{target}_{f}" for f in FACTOR_NAMES]
+        else:
+            caused = ["UK_Level", "UK_Slope", "UK_Curvature"]
 
     results = []
     for target in caused:
