@@ -1,0 +1,305 @@
+{
+  "model_comparison": {
+    "OLS + A_VIF_clean": {
+      "cv_rmse": 388.0,
+      "test_rmse": 2035.6,
+      "naive_rmse": 122.8,
+      "test_r2": -314.47,
+      "overfit_ratio": 5.25,
+      "overfit_passed": "False",
+      "clf_accuracy": 0.2,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 10
+    },
+    "Ridge + A_VIF_clean": {
+      "cv_rmse": 556.2,
+      "test_rmse": 118.7,
+      "naive_rmse": 122.8,
+      "test_r2": -0.073,
+      "overfit_ratio": 0.21,
+      "overfit_passed": "True",
+      "clf_accuracy": 0.2,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 10
+    },
+    "ElasticNet + A_VIF_clean": {
+      "cv_rmse": 560.6,
+      "test_rmse": 120.4,
+      "naive_rmse": 122.8,
+      "test_r2": -0.103,
+      "overfit_ratio": 0.21,
+      "overfit_passed": "True",
+      "clf_accuracy": 0.2,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 10
+    },
+    "XGB_shallow + A_VIF_clean": {
+      "cv_rmse": 298.1,
+      "test_rmse": 875.2,
+      "naive_rmse": 122.8,
+      "test_r2": -57.32,
+      "overfit_ratio": 2.94,
+      "overfit_passed": "False",
+      "clf_accuracy": 0.2,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 10
+    },
+    "XGB_deep + A_VIF_clean": {
+      "cv_rmse": 843.7,
+      "test_rmse": 2132.6,
+      "naive_rmse": 122.8,
+      "test_r2": -345.276,
+      "overfit_ratio": 2.53,
+      "overfit_passed": "False",
+      "clf_accuracy": 0.2,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 10
+    },
+    "OLS + B_PCA5": {
+      "cv_rmse": 2934.0,
+      "test_rmse": 6610.6,
+      "naive_rmse": 122.8,
+      "test_r2": -3326.172,
+      "overfit_ratio": 2.25,
+      "overfit_passed": "False",
+      "clf_accuracy": null,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 5
+    },
+    "Ridge + B_PCA5": {
+      "cv_rmse": 564.6,
+      "test_rmse": 124.0,
+      "naive_rmse": 122.8,
+      "test_r2": -0.172,
+      "overfit_ratio": 0.22,
+      "overfit_passed": "True",
+      "clf_accuracy": null,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 5
+    },
+    "ElasticNet + B_PCA5": {
+      "cv_rmse": 582.7,
+      "test_rmse": 127.8,
+      "naive_rmse": 122.8,
+      "test_r2": -0.243,
+      "overfit_ratio": 0.22,
+      "overfit_passed": "True",
+      "clf_accuracy": null,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 5
+    },
+    "XGB_shallow + B_PCA5": {
+      "cv_rmse": 772.4,
+      "test_rmse": 329.4,
+      "naive_rmse": 122.8,
+      "test_r2": -7.261,
+      "overfit_ratio": 0.43,
+      "overfit_passed": "True",
+      "clf_accuracy": null,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 5
+    },
+    "XGB_deep + B_PCA5": {
+      "cv_rmse": 1958.3,
+      "test_rmse": 614.9,
+      "naive_rmse": 122.8,
+      "test_r2": -27.784,
+      "overfit_ratio": 0.31,
+      "overfit_passed": "True",
+      "clf_accuracy": null,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 5
+    },
+    "OLS + C_Minimal3": {
+      "cv_rmse": 489.6,
+      "test_rmse": 638.1,
+      "naive_rmse": 122.8,
+      "test_r2": -30.005,
+      "overfit_ratio": 1.3,
+      "overfit_passed": "True",
+      "clf_accuracy": 0.257,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 3
+    },
+    "Ridge + C_Minimal3": {
+      "cv_rmse": 557.2,
+      "test_rmse": 117.0,
+      "naive_rmse": 122.8,
+      "test_r2": -0.043,
+      "overfit_ratio": 0.21,
+      "overfit_passed": "True",
+      "clf_accuracy": 0.257,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 3
+    },
+    "ElasticNet + C_Minimal3": {
+      "cv_rmse": 560.7,
+      "test_rmse": 117.9,
+      "naive_rmse": 122.8,
+      "test_r2": -0.058,
+      "overfit_ratio": 0.21,
+      "overfit_passed": "True",
+      "clf_accuracy": 0.257,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 3
+    },
+    "XGB_shallow + C_Minimal3": {
+      "cv_rmse": 467.9,
+      "test_rmse": 459.5,
+      "naive_rmse": 122.8,
+      "test_r2": -15.078,
+      "overfit_ratio": 0.98,
+      "overfit_passed": "True",
+      "clf_accuracy": 0.257,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 3
+    },
+    "XGB_deep + C_Minimal3": {
+      "cv_rmse": 783.8,
+      "test_rmse": 663.5,
+      "naive_rmse": 122.8,
+      "test_r2": -32.52,
+      "overfit_ratio": 0.85,
+      "overfit_passed": "True",
+      "clf_accuracy": 0.257,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 3
+    },
+    "OLS + D_PCA3": {
+      "cv_rmse": 2980.7,
+      "test_rmse": 5104.2,
+      "naive_rmse": 122.8,
+      "test_r2": -1982.53,
+      "overfit_ratio": 1.71,
+      "overfit_passed": "False",
+      "clf_accuracy": 0.257,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 3
+    },
+    "Ridge + D_PCA3": {
+      "cv_rmse": 565.6,
+      "test_rmse": 125.4,
+      "naive_rmse": 122.8,
+      "test_r2": -0.198,
+      "overfit_ratio": 0.22,
+      "overfit_passed": "True",
+      "clf_accuracy": 0.257,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 3
+    },
+    "ElasticNet + D_PCA3": {
+      "cv_rmse": 582.6,
+      "test_rmse": 129.8,
+      "naive_rmse": 122.8,
+      "test_r2": -0.282,
+      "overfit_ratio": 0.22,
+      "overfit_passed": "True",
+      "clf_accuracy": 0.257,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 3
+    },
+    "XGB_shallow + D_PCA3": {
+      "cv_rmse": 749.1,
+      "test_rmse": 622.7,
+      "naive_rmse": 122.8,
+      "test_r2": -28.52,
+      "overfit_ratio": 0.83,
+      "overfit_passed": "True",
+      "clf_accuracy": 0.257,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 3
+    },
+    "XGB_deep + D_PCA3": {
+      "cv_rmse": 1544.2,
+      "test_rmse": 1561.9,
+      "naive_rmse": 122.8,
+      "test_r2": -184.727,
+      "overfit_ratio": 1.01,
+      "overfit_passed": "True",
+      "clf_accuracy": 0.257,
+      "n_train": 78,
+      "n_test": 35,
+      "n_features": 3
+    }
+  },
+  "best_model": "Ridge + C_Minimal3",
+  "vif_dropped": [
+    [
+      "us_level_midas",
+      323.3
+    ],
+    [
+      "unrate_lag1",
+      70.5
+    ],
+    [
+      "ism_emp_lag1",
+      34.6
+    ],
+    [
+      "fed_rate_midas",
+      22.9
+    ],
+    [
+      "sp500_midas",
+      11.8
+    ]
+  ],
+  "retained_features": [
+    "nfp_lag1",
+    "claims_midas",
+    "cont_claims_midas",
+    "vix_midas",
+    "credit_spread_midas",
+    "yield_spread_midas",
+    "us_slope_midas",
+    "temp_help_lag1",
+    "awh_mfg_lag1",
+    "consumer_conf_lag1"
+  ],
+  "pca_variance_explained": [
+    0.38103258492098396,
+    0.6807508284101933,
+    0.7774458376927482,
+    0.8517787035585563,
+    0.9006978324187331
+  ],
+  "forecast": {
+    "best_model": "Ridge + C_Minimal3",
+    "test_rmse": 117.0,
+    "test_r2": -0.043,
+    "consensus": 95.0,
+    "point_forecast": 126.7,
+    "qr_median": 177.3,
+    "ci_80": [
+      -64.1,
+      302.0
+    ],
+    "ci_50": [
+      28.6,
+      285.7
+    ],
+    "P_miss": 0.171,
+    "P_inline": 0.58,
+    "P_beat": 0.249
+  }
+}

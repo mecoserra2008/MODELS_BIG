@@ -42,6 +42,14 @@ FRED_SERIES = {
     "SP500": "SP500",
     "GAS_PRICE": "GASREGW",
     "OIL_WTI": "DCOILWTICO",
+    # NFP-specific predictors (literature-grounded)
+    "CONT_CLAIMS": "CCSA",           # Continued claims (weekly)
+    "TEMP_HELP": "TEMPHELPS",        # Temp help services employment (monthly)
+    "AWH_MFG": "AWHMAN",            # Avg weekly hours manufacturing (monthly)
+    "CONSUMER_CONF": "CSCICP03USM665S",  # Consumer confidence (monthly, OECD)
+    "VIX": "VIXCLS",                # VIX daily
+    "CREDIT_SPREAD": "BAAFFM",      # BAA-Fed Funds spread (daily)
+    "YIELD_SPREAD": "T10Y2Y",       # 10Y-2Y spread (daily)
     # FX
     "EURUSD": "DEXUSEU",
     "USDMXN": "DEXMXUS",
