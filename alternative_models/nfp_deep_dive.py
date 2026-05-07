@@ -40,6 +40,7 @@ from src.probabilistic import OrderedLogit, MacroQuantileRegression, ensemble_pr
 from src.evaluation import (
     train_test_split_temporal, ExpandingWindowCV,
     evaluate_regression, evaluate_classification, check_overfitting,
+    TRAIN_END, TEST_START, TEST_END,
 )
 
 sns.set_style("whitegrid")
@@ -148,18 +149,29 @@ print("\nFinal VIFs:")
 for c, v in sorted(zip(clean_cols, final_vifs), key=lambda x: -x[1]):
     print(f"  {c:30s} VIF={v:.2f}")
 
-# PCA on full set (alternative to VIF elimination)
+# PCA on TRAIN set only (no leakage), then project all data
+# Exclude COVID from PCA fitting too
+covid_mask_all = (X_scaled.index >= "2020-02-01") & (X_scaled.index <= "2020-08-31")
+train_mask_pca = (X_scaled.index <= TRAIN_END) & ~covid_mask_all
+X_train_for_pca = X_scaled[train_mask_pca]
+
 pca = PCA(n_components=5)
-X_pca = pd.DataFrame(
-    pca.fit_transform(X_scaled),
+pca.fit(X_train_for_pca)
+X_pca_all = pd.DataFrame(
+    pca.transform(X_scaled),
     index=X_scaled.index,
     columns=[f"PC{i+1}" for i in range(5)],
 )
 cumvar = np.cumsum(pca.explained_variance_ratio_)
-print(f"\nPCA (5 components): {cumvar[-1]:.1%} variance explained")
+print(f"\nPCA (5 components, fit on train ex-COVID): {cumvar[-1]:.1%} variance explained")
 for i in range(5):
     print(f"  PC{i+1}: {pca.explained_variance_ratio_[i]:.1%} "
           f"(cum {cumvar[i]:.1%})")
+
+# Build LAGGED PC features (shift by 1 month — pure prediction, no contemporaneous)
+X_pca_lagged = X_pca_all.shift(1).rename(columns=lambda c: c + "_lag1")
+X_pca_lagged["nfp_lag1"] = nfp.shift(1).reindex(X_pca_lagged.index)
+X_pca_lagged = X_pca_lagged.dropna()
 
 # =====================================================================
 # 4. DEFINE FEATURE SETS FOR EACH MODEL
@@ -168,24 +180,29 @@ print(f"\n{'=' * 60}")
 print("4. MODEL SPECIFICATIONS")
 print("=" * 60)
 
-# Feature Set A: VIF-cleaned (orthogonal-ish, ~4-6 features)
+# Feature Set A: VIF-cleaned (all lagged raw features, VIF < 10)
 X_A = X_clean.copy()
 
-# Feature Set B: PCA factors (guaranteed orthogonal, 5 components)
-X_B = X_pca.copy()
+# Feature Set B: Lagged PCA-5 + nfp_lag1 (guaranteed orthogonal, 6 features)
+X_B = X_pca_lagged[["PC1_lag1", "PC2_lag1", "PC3_lag1", "PC4_lag1", "PC5_lag1", "nfp_lag1"]].copy()
 
 # Feature Set C: Minimal (3 strongest predictors from literature)
-# Claims (strongest single predictor), VIX (financial conditions), nfp_lag1 (persistence)
 min_cols = [c for c in ["nfp_lag1", "claims_midas", "vix_midas"] if c in X_scaled.columns]
 X_C = X_scaled[min_cols].copy()
 
-# Feature Set D: PCA(3) — most parsimonious
-X_D = X_pca[["PC1", "PC2", "PC3"]].copy()
+# Feature Set D: Lagged PCA-3 + nfp_lag1 (most parsimonious orthogonal)
+X_D = X_pca_lagged[["PC1_lag1", "PC2_lag1", "PC3_lag1", "nfp_lag1"]].copy()
 
-print(f"Set A (VIF-cleaned): {X_A.shape[1]} features — {list(X_A.columns)}")
-print(f"Set B (PCA-5):       {X_B.shape[1]} factors")
-print(f"Set C (Minimal-3):   {X_C.shape[1]} features — {list(X_C.columns)}")
-print(f"Set D (PCA-3):       {X_D.shape[1]} factors")
+# Align all feature sets to common index
+common_idx = X_A.index.intersection(X_B.index).intersection(X_C.index).intersection(X_D.index)
+X_A, X_B, X_C, X_D = X_A.loc[common_idx], X_B.loc[common_idx], X_C.loc[common_idx], X_D.loc[common_idx]
+y_all = y_all.reindex(common_idx).dropna()
+X_A, X_B, X_C, X_D = X_A.loc[y_all.index], X_B.loc[y_all.index], X_C.loc[y_all.index], X_D.loc[y_all.index]
+
+print(f"Set A (VIF-cleaned):    {X_A.shape[1]} features — {list(X_A.columns)}")
+print(f"Set B (LagPCA5+nfp):    {X_B.shape[1]} features")
+print(f"Set C (Minimal-3):      {X_C.shape[1]} features — {list(X_C.columns)}")
+print(f"Set D (LagPCA3+nfp):    {X_D.shape[1]} features")
 
 # =====================================================================
 # 5. RUN ALL MODEL × FEATURE SET COMBINATIONS
@@ -197,17 +214,23 @@ print("=" * 60)
 all_results = {}
 
 
-def evaluate_model(name, model_fn, X, y):
-    """Run 3-stage evaluation."""
+def evaluate_model(name, model_fn, X, y, exclude_covid=True):
+    """Run 3-stage evaluation with COVID exclusion from training."""
     split = train_test_split_temporal(y, X)
     X_tr, y_tr = split["X_train"], split["y_train"]
     X_te, y_te = split["X_test"], split["y_test"]
+
+    # Exclude COVID outlier months (2020-03 to 2020-08) from training
+    if exclude_covid:
+        covid_mask = (y_tr.index >= "2020-02-01") & (y_tr.index <= "2020-08-31")
+        X_tr = X_tr[~covid_mask]
+        y_tr = y_tr[~covid_mask]
 
     if len(y_tr) < 30 or len(y_te) < 3:
         print(f"  {name}: SKIP (train={len(y_tr)}, test={len(y_te)})")
         return None
 
-    # Stage 1: CV
+    # Stage 1: CV (within cleaned train set)
     cv = ExpandingWindowCV(min_train_size=min(60, len(y_tr) - 10), step=3)
     cv_errors = []
     for tr_i, te_i in cv.split(X_tr.values):
