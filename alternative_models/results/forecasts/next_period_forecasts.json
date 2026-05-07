@@ -1,0 +1,92 @@
+{
+  "US_UNRATE": {
+    "target": "US Unemployment Rate (Apr)",
+    "feature_date": "2026-03-31",
+    "consensus": 4.3,
+    "unit": "%",
+    "xgb_point_forecast": 4.0476,
+    "quantile_median": 4.1716,
+    "ci_80_lower": 3.6971,
+    "ci_80_upper": 4.5321,
+    "ci_50_lower": 3.7354,
+    "ci_50_upper": 4.2989,
+    "ensemble_P_miss": 0.5981,
+    "ensemble_P_inline": 0.2792,
+    "ensemble_P_beat": 0.1226,
+    "ordered_logit": {
+      "miss": 0.1944,
+      "inline": 0.5909,
+      "beat": 0.2148
+    },
+    "xgb_classifier": {
+      "miss": 0.8212,
+      "inline": 0.1334,
+      "beat": 0.0454
+    },
+    "quantile_reg": {
+      "miss": 0.5558,
+      "inline": 0.2593,
+      "beat": 0.185
+    }
+  },
+  "US_AHE_MOM": {
+    "target": "US Avg Hourly Earnings MoM (Apr)",
+    "feature_date": "2026-03-31",
+    "consensus": 0.2,
+    "unit": "pp",
+    "xgb_point_forecast": 0.4147,
+    "quantile_median": 0.7334,
+    "ci_80_lower": 0.4814,
+    "ci_80_upper": 1.5772,
+    "ci_50_lower": 0.5905,
+    "ci_50_upper": 1.5173,
+    "ensemble_P_miss": 0.0119,
+    "ensemble_P_inline": 0.3183,
+    "ensemble_P_beat": 0.6698,
+    "ordered_logit": {
+      "miss": 0.0013,
+      "inline": 0.022,
+      "beat": 0.9767
+    },
+    "xgb_classifier": {
+      "miss": 0.0232,
+      "inline": 0.5902,
+      "beat": 0.3866
+    },
+    "quantile_reg": {
+      "miss": 0.0,
+      "inline": 0.0707,
+      "beat": 0.9293
+    }
+  },
+  "BR_IPCA_YOY": {
+    "target": "Brazil IPCA YoY (Apr)",
+    "feature_date": "2026-03-31",
+    "consensus": 4.7,
+    "unit": "%",
+    "xgb_point_forecast": 0.606,
+    "quantile_median": 0.5434,
+    "ci_80_lower": 0.3002,
+    "ci_80_upper": 0.7547,
+    "ci_50_lower": 0.3189,
+    "ci_50_upper": 0.6999,
+    "ensemble_P_miss": 0.7941,
+    "ensemble_P_inline": 0.0958,
+    "ensemble_P_beat": 0.1101,
+    "ordered_logit": {
+      "miss": 0.573,
+      "inline": 0.2761,
+      "beat": 0.151
+    },
+    "xgb_classifier": {
+      "miss": 0.8017,
+      "inline": 0.0535,
+      "beat": 0.1448
+    },
+    "quantile_reg": {
+      "miss": 1.0,
+      "inline": 0.0,
+      "beat": 0.0
+    }
+  }
+}

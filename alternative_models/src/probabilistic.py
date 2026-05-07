@@ -169,8 +169,9 @@ class MacroQuantileRegression:
 
     def predict_quantiles(self, X) -> pd.DataFrame:
         """Predict at all quantile levels. Returns DataFrame."""
-        import statsmodels.api as sm
-        X_const = sm.add_constant(np.array(X, dtype=float))
+        X_arr = np.array(X, dtype=float)
+        # Manually add constant column (sm.add_constant fails on single rows)
+        X_const = np.column_stack([np.ones(X_arr.shape[0]), X_arr])
 
         preds = {}
         for q in self.quantiles:

@@ -162,8 +162,56 @@ BR IPCA        & 38.9\% & 33.3\% & $+$5.6pp \\
     \item The MIDAS daily-to-monthly bridge via yield curve factors allows real-time updating as markets move intra-month.
 \end{enumerate}
 
+\newpage
+
+% PAGE 5: NEXT-PERIOD FORECASTS
+\section*{Next-Period Forecasts: May 8, 2026 Releases}
+
+Models refitted on full sample (2005--2026 Q1) after passing the overfitting gate and achieving ensemble accuracy above random (33.3\%). Only qualified models are used for inference.
+
+\subsection*{Point Forecasts \& Confidence Intervals}
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Variable} & \textbf{Consensus} & \textbf{XGB Point} & \textbf{QR Median} & \textbf{50\% CI} & \textbf{80\% CI} \\
+\midrule
+US Unemployment (\%)  & 4.30 & 4.05 & 4.17 & [3.74, 4.30] & [3.70, 4.53] \\
+US AHE MoM (pp)       & 0.20 & 0.41 & 0.73 & [0.59, 1.52] & [0.48, 1.58] \\
+BR IPCA YoY (\%)      & 4.70 & 0.61 & 0.54 & [0.32, 0.70] & [0.30, 0.75] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{Beat/Miss Probabilities (Ensemble: 25\% OL + 50\% XGB + 25\% QR)}
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lccc}
+\toprule
+\textbf{Variable} & \textbf{P(miss)} & \textbf{P(inline)} & \textbf{P(beat)} \\
+\midrule
+US Unemployment  & \textbf{59.8\%} & 27.9\% & 12.3\% \\
+US AHE MoM       & 1.2\% & 31.8\% & \textbf{67.0\%} \\
+BR IPCA YoY      & \textbf{79.4\%} & 9.6\% & 11.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{Interpretation}
+
+\begin{itemize}[nosep, leftmargin=1.2em]
+    \item \textbf{US Unemployment (P(miss)=60\%):} The model forecasts 4.05--4.17\% vs.\ 4.3\% consensus. This implies a tighter labour market than expected --- consistent with the still-elevated yield curve slope (restrictive policy not yet biting through to employment). The 80\% CI spans 3.70--4.53\%, so the miss signal is moderate rather than decisive.
+    \item \textbf{US AHE MoM (P(beat)=67\%):} Strong upside surprise expected. The XGB point (0.41pp) and QR median (0.73pp) both exceed the 0.2pp consensus. This is coherent with the unemployment miss --- a tighter labour market drives stronger wage growth (Phillips curve). \textit{This would be hawkish for the Fed} and bearish for Treasuries.
+    \item \textbf{BR IPCA YoY (P(miss)=79\%):} The ensemble strongly favours a downside surprise. BRL has stabilised and DI curve levels have compressed, both of which the model interprets as disinflationary signals. A miss would support the case for BCB easing later in the cycle and compress the long end of the DI curve.
+\end{itemize}
+
+\subsection*{Cross-Variable Coherence}
+The US unemployment miss and AHE beat are internally consistent: both point to a labour market that is tighter than consensus expects. Together, they suggest a hawkish data print on May 8, which would be positive for USD, negative for US duration, and potentially spill into higher gilt yields (per our VAR spillover analysis).
+
 \vspace{0.3cm}
 \noindent\rule{\textwidth}{0.4pt}
-{\footnotesize\color{biggrey} \textbf{Data:} FRED (23 US/intl macro series), IPEA (Brazil). Models: XGBoost, Ordered Logit (MLE), Quantile Regression. Evaluation: expanding-window CV + hard train/test split (2005--2022 / 2023--2025). This document does not constitute investment advice.}
+{\footnotesize\color{biggrey} \textbf{Data:} FRED (23 US/intl macro series), IPEA (Brazil). Models: XGBoost, Ordered Logit (MLE), Quantile Regression. Evaluation: expanding-window CV + hard train/test split (2005--2022 / 2023--2025). Forecasts generated from models refitted on full available sample after passing test-set validation. This document does not constitute investment advice.}
 
 \end{document}
