@@ -293,6 +293,23 @@ for tgt_key, tgt_cfg in TARGETS.items():
         cumvar = np.sum(pca.explained_variance_ratio_)
         print(f"  PCA: {n_comp} components, {cumvar:.0%} variance")
 
+        pca_info = {
+            "n_components": n_comp,
+            "explained_variance": [round(float(v), 6) for v in pca.explained_variance_[:n_comp]],
+            "explained_variance_ratio": [round(float(v), 6) for v in pca.explained_variance_ratio_[:n_comp]],
+            "components": [],
+        }
+        for i in range(n_comp):
+            loadings = pd.Series(pca.components_[i], index=X_s.columns)
+            top_loadings = loadings.abs().sort_values(ascending=False).head(6)
+            pca_info["components"].append({
+                "pc": f"PC{i+1}",
+                "top_loadings": [
+                    {"variable": var, "loading": round(float(loadings[var]), 6)}
+                    for var in top_loadings.index
+                ],
+            })
+
         # Lagged PCs
         X_pca_lag = X_pca_all.shift(1).rename(columns=lambda c: c + "_lag1")
         X_pca_lag[f"{tgt_key}_lag1"] = y.shift(1).reindex(X_pca_lag.index)
@@ -419,6 +436,7 @@ for tgt_key, tgt_cfg in TARGETS.items():
             "n_models_tested": len(model_results),
             "n_passed_gate": len(passed),
             "coefficients": final_coefs,
+            "pca_info": pca_info,
             "forecast": forecast,
         }
 
