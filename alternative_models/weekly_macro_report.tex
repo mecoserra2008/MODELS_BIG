@@ -77,6 +77,8 @@ All features are strictly \textbf{lagged} (no contemporaneous information). High
     \item \textbf{XGBoost}: gradient-boosted trees (depth 2--4, L2=2--5, lr=0.03--0.05)
 \end{itemize}
 
+Coefficients shown in this report are taken directly from the backend results file and represent standardised linear weights for each selected model. They are used to identify the dominant macro channels and to explain the economic drivers behind each forecast.
+
 \subsection*{Probabilistic Output}
 \textbf{Point forecast:} best model refitted on full ex-COVID sample.
 \textbf{Confidence intervals:} Quantile Regression at $\tau \in \{0.10, 0.25, 0.50, 0.75, 0.90\}$.
@@ -132,7 +134,7 @@ PC4\_lag1 & $-0.007$ & Near-zero: minimal incremental contribution \\
 \section*{US PPI MoM --- Wed May 13 (8:30 ET)}
 
 \subsection*{Best Model: ElasticNet + VIF-Cleaned Features}
-Test R\textsuperscript{2} = $-$0.154 (all 20 models passed gate). ElasticNet selected with strong L1 sparsity --- only 2 features retained non-zero coefficients:
+Test R\textsuperscript{2} = $-$0.154 (all 20 models passed gate). ElasticNet selected with strong L1 sparsity --- only a few variables retain material weight:
 
 \begin{table}[H]
 \centering\small
@@ -140,9 +142,10 @@ Test R\textsuperscript{2} = $-$0.154 (all 20 models passed gate). ElasticNet sel
 \toprule
 \textbf{Variable} & \textbf{Coef.} & \textbf{Interpretation} \\
 \midrule
-PPI\_MOM\_lag1 & $+0.433$ & Moderate persistence (lower than CPI --- PPI mean-reverts faster) \\
+PPI\_MOM\_lag1 & $+0.433$ & Strong positive momentum from last month \\
+PPI\_MOM\_lag2 & $+0.084$ & Additional persistence over a two-month horizon \\
 VIX\_midas & $-0.040$ & Higher uncertainty $\rightarrow$ demand destruction $\rightarrow$ lower producer prices \\
-\textit{All others} & $0.000$ & Zeroed by L1 penalty (oil, credit spread, EUR/USD not selected) \\
+\textit{All others} & $0.000$ & Zeroed by L1 penalty (oil, credit spread, EUR/USD, level, CPI not selected) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -168,6 +171,22 @@ Test R\textsuperscript{2} = +0.049. Modest but positive --- consumption is drive
 
 \begin{table}[H]
 \centering\small
+\begin{tabular}{lrl}
+\toprule
+\textbf{Variable} & \textbf{Coef.} & \textbf{Interpretation} \\
+\midrule
+US\_RETAIL\_MOM\_lag1 & $-0.141$ & Mean reversion in retail sales after the February/March spike \\
+PC2\_lag1 & $-0.115$ & Tighter macro/financial conditions damp demand \\
+PC4\_lag1 & $+0.075$ & Positive consumer confidence/wealth signal supporting spending \\
+PC5\_lag1 & $+0.023$ & Risk-appetite or global demand lift \\
+PC3\_lag1 & $-0.019$ & Small drag from residual energy/confidence factor \\
+PC1\_lag1 & $+0.001$ & Near-zero: policy-rate / term structure effect is negligible \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering\small
 \begin{tabular}{ccccccc}
 \toprule
 \textbf{Prev} & \textbf{Cons} & \textbf{Point} & \textbf{Median} & \textbf{80\% CI} & \textbf{P(miss)} & \textbf{P(beat)} \\
@@ -186,6 +205,22 @@ Test R\textsuperscript{2} = +0.049. Modest but positive --- consumption is drive
 
 \subsection*{Best Model: Ridge + Lagged PCA(5)}
 Test R\textsuperscript{2} = \textbf{0.914}. The highest R\textsuperscript{2} across all 4 targets. UK unemployment is highly persistent and well-captured by the yield curve regime (PC1/PC2 encode BoE expectations).
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lrl}
+\toprule
+\textbf{Variable} & \textbf{Coef.} & \textbf{Interpretation} \\
+\midrule
+UK\_UNEMP\_lag1 & $+1.244$ & Very strong persistence in the unemployment rate \\
+PC1\_lag1 & $-0.207$ & Strong macro/regime factor: tighter BoE expectations reduce unemployment slightly \\
+PC2\_lag1 & $-0.069$ & Additional policy/labour slack signal that tempers jobless growth \\
+PC4\_lag1 & $+0.083$ & Financial stress or demand weakness raising unemployment \\
+PC5\_lag1 & $+0.104$ & Global risk/real-economy pressure lifting joblessness \\
+PC3\_lag1 & $-0.015$ & Very small negative contribution from residual cyclical factor \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{table}[H]
 \centering\small
