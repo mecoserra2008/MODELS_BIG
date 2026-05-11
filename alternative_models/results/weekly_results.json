@@ -1,0 +1,144 @@
+{
+  "US_CPI_YOY": {
+    "label": "US CPI YoY (%)",
+    "consensus": 3.75,
+    "previous": 3.3,
+    "best_model": "ElasticNet + B_PCA5",
+    "test_rmse": 0.3315,
+    "test_r2": 0.8716,
+    "overfit_passed": "True",
+    "clf_accuracy": 0.6,
+    "n_models_tested": 20,
+    "n_passed_gate": 19,
+    "coefficients": {
+      "PC1_lag1": -0.025907,
+      "PC2_lag1": -0.099609,
+      "PC3_lag1": 0.097085,
+      "PC4_lag1": -0.007029,
+      "PC5_lag1": 0.151307,
+      "US_CPI_YOY_lag1": 0.993207
+    },
+    "forecast": {
+      "point": 2.5828,
+      "qr_median": 2.5787,
+      "ci_80": [
+        2.1931,
+        2.824
+      ],
+      "ci_50": [
+        2.3219,
+        2.6594
+      ],
+      "P_miss": 0.288,
+      "P_inline": 0.59,
+      "P_beat": 0.122
+    }
+  },
+  "US_PPI_MOM": {
+    "label": "US PPI MoM (%)",
+    "consensus": 0.5,
+    "previous": 0.5,
+    "best_model": "ElasticNet + A_VIF",
+    "test_rmse": 0.814,
+    "test_r2": -0.1539,
+    "overfit_passed": "True",
+    "clf_accuracy": 0.429,
+    "n_models_tested": 20,
+    "n_passed_gate": 20,
+    "coefficients": {
+      "US_PPI_MOM_lag1": 0.433168,
+      "US_PPI_MOM_lag2": 0.083768,
+      "OIL_WTI_midas": -0.0,
+      "CREDIT_SPREAD_midas": -0.0,
+      "EURUSD_midas": 0.0,
+      "US_Level_midas": -0.0,
+      "VIX_midas": -0.039533,
+      "CPI_lag1": -0.0
+    },
+    "forecast": {
+      "point": 0.956,
+      "qr_median": 1.5647,
+      "ci_80": [
+        0.1132,
+        2.6449
+      ],
+      "ci_50": [
+        0.4542,
+        1.8805
+      ],
+      "P_miss": 0.106,
+      "P_inline": 0.552,
+      "P_beat": 0.342
+    }
+  },
+  "US_RETAIL_MOM": {
+    "label": "US Retail Sales MoM (%)",
+    "consensus": 0.3,
+    "previous": 1.7,
+    "best_model": "Ridge + B_PCA5",
+    "test_rmse": 0.9015,
+    "test_r2": 0.0488,
+    "overfit_passed": "True",
+    "clf_accuracy": 0.486,
+    "n_models_tested": 20,
+    "n_passed_gate": 20,
+    "coefficients": {
+      "PC1_lag1": 0.00123,
+      "PC2_lag1": -0.114931,
+      "PC3_lag1": -0.019282,
+      "PC4_lag1": 0.0748,
+      "PC5_lag1": 0.022652,
+      "US_RETAIL_MOM_lag1": -0.141341
+    },
+    "forecast": {
+      "point": 0.3715,
+      "qr_median": 0.3005,
+      "ci_80": [
+        -0.8648,
+        2.2109
+      ],
+      "ci_50": [
+        -0.3867,
+        0.903
+      ],
+      "P_miss": 0.265,
+      "P_inline": 0.592,
+      "P_beat": 0.143
+    }
+  },
+  "UK_UNEMP": {
+    "label": "UK Unemployment (%)",
+    "consensus": 4.9,
+    "previous": 4.9,
+    "best_model": "Ridge + B_PCA5",
+    "test_rmse": 0.1021,
+    "test_r2": 0.9135,
+    "overfit_passed": "True",
+    "clf_accuracy": 0.914,
+    "n_models_tested": 20,
+    "n_passed_gate": 20,
+    "coefficients": {
+      "PC1_lag1": -0.207028,
+      "PC2_lag1": -0.069438,
+      "PC3_lag1": -0.014692,
+      "PC4_lag1": 0.082973,
+      "PC5_lag1": 0.104056,
+      "UK_UNEMP_lag1": 1.24427
+    },
+    "forecast": {
+      "point": 5.1279,
+      "qr_median": 5.1573,
+      "ci_80": [
+        5.0416,
+        5.2061
+      ],
+      "ci_50": [
+        5.0733,
+        5.184
+      ],
+      "P_miss": 0.004,
+      "P_inline": 0.813,
+      "P_beat": 0.183
+    }
+  }
+}

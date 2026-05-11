@@ -50,6 +50,11 @@ FRED_SERIES = {
     "VIX": "VIXCLS",                # VIX daily
     "CREDIT_SPREAD": "BAAFFM",      # BAA-Fed Funds spread (daily)
     "YIELD_SPREAD": "T10Y2Y",       # 10Y-2Y spread (daily)
+    # Weekly macro targets
+    "PPI": "PPIACO",                 # PPI Final Demand (monthly)
+    "RETAIL": "RSXFS",               # Retail Sales ex-auto (monthly)
+    "UK_UNEMP": "LRHUTTTTGBM156S",  # UK harmonised unemployment rate (monthly, OECD)
+    "UK_WAGES": "LCRENT02GBM156S",  # UK hourly earnings manufacturing (monthly, OECD)
     # FX
     "EURUSD": "DEXUSEU",
     "USDMXN": "DEXMXUS",

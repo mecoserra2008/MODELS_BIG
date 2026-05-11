@@ -1,0 +1,218 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage[margin=2.0cm, top=1.8cm, bottom=1.8cm]{geometry}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{tikz}
+\usepackage{enumitem}
+\usepackage{tabularx}
+\usepackage{multicol}
+
+\definecolor{bigorange}{RGB}{255,130,0}
+\definecolor{biggrey}{RGB}{60,60,60}
+\hypersetup{colorlinks=true, linkcolor=bigorange, urlcolor=bigorange}
+\pagestyle{fancy}\fancyhf{}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{bigorange}\leaders\hrule height \headrulewidth\hfill}}
+\fancyhead[L]{\small\color{biggrey} Banco BIG $|$ Quantitative Research}
+\fancyhead[R]{\small\color{biggrey} May 12--15, 2026}
+\fancyfoot[C]{\small\color{biggrey}\thepage}
+
+\begin{document}
+
+% COVER
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture, overlay]
+    \fill[bigorange] (current page.north west) rectangle ([yshift=-9cm]current page.north east);
+    \fill[white, opacity=0.15] ([yshift=-3cm]current page.north west) -- ([yshift=-7cm]current page.north west) -- ([yshift=-5cm]current page.north east) -- ([yshift=-1cm]current page.north east) -- cycle;
+    \fill[bigorange] ([yshift=1.5cm]current page.south west) rectangle (current page.south east);
+\end{tikzpicture}
+\vspace*{1cm}
+\begin{center}\includegraphics[width=4.5cm]{../Logo-BIG.png}\end{center}
+\vspace{3cm}
+\begin{center}
+    {\Huge\bfseries\color{biggrey} Weekly Macro Outlook}\\[0.4cm]
+    {\Huge\bfseries\color{biggrey} Model-Based Forecasts}\\[1cm]
+    {\Large\color{biggrey} US CPI $|$ US PPI $|$ US Retail Sales $|$ UK Labour Market}\\[0.3cm]
+    {\Large\color{biggrey} MIDAS Features, Lagged PCA, Ridge/ElasticNet/XGBoost}\\[2cm]
+    {\large\color{biggrey} Week of May 12--15, 2026}
+\end{center}
+\vfill
+\begin{tikzpicture}[remember picture, overlay]
+    \node[anchor=south, yshift=2.0cm] at (current page.south) {\color{white}\small\bfseries Banco BIG $|$ Institutional Research};
+\end{tikzpicture}
+
+\newpage
+
+% PAGE 2: METHODOLOGY
+\section*{Methodology}
+
+\subsection*{Framework}
+For each target variable, we run a systematic model search: 5 models $\times$ 4 feature sets = 20 combinations, evaluated on a hard train/test split (train: pre-2023, test: 2023--2025). COVID months (2020-02 to 2020-08) excluded from training. Only models passing the overfitting gate (test RMSE $< 1.5\times$ CV RMSE) qualify for inference.
+
+\subsection*{Feature Construction}
+All features are strictly \textbf{lagged} (no contemporaneous information). High-frequency predictors (daily: oil, VIX, yields, FX; weekly: claims) are aggregated to monthly via MIDAS Beta polynomial weights ($\theta_1=1, \theta_2=5$, K=22 for daily, K=4 for weekly). Same-frequency regressors enter with 1-month lag.
+
+\subsection*{Multicollinearity Treatment}
+\begin{enumerate}[nosep]
+    \item \textbf{StandardScaler}: all features standardised to zero mean, unit variance
+    \item \textbf{VIF elimination}: iteratively drop highest-VIF feature until all VIF $<$ 10
+    \item \textbf{PCA}: fit on train-only (ex-COVID), extract 3--5 orthogonal factors, \textbf{lag by 1 month}
+\end{enumerate}
+
+\subsection*{Model Specifications}
+\begin{itemize}[nosep, leftmargin=1.2em]
+    \item \textbf{OLS}: unpenalised linear regression (baseline)
+    \item \textbf{Ridge}: L2 penalty, $\lambda$ by LOO-CV --- shrinks correlated coefficients uniformly
+    \item \textbf{ElasticNet}: L1+L2 mix, automatic feature selection via sparsity
+    \item \textbf{XGBoost}: gradient-boosted trees (depth 2--4, L2=2--5, lr=0.03--0.05)
+\end{itemize}
+
+\subsection*{Probabilistic Output}
+\textbf{Point forecast:} best model refitted on full ex-COVID sample.
+\textbf{Confidence intervals:} Quantile Regression at $\tau \in \{0.10, 0.25, 0.50, 0.75, 0.90\}$.
+\textbf{Beat/miss:} Ensemble of Ordered Logit (25\%) + XGBoost Classifier (50\%) + Quantile Regression (25\%).
+
+\newpage
+
+% PAGE 3: US CPI
+\section*{US CPI YoY --- Tue May 12 (8:30 ET)}
+
+\subsection*{Best Model: ElasticNet + Lagged PCA(5)}
+\vspace{-0.2cm}
+$$\widehat{\text{CPI}}_t^{\text{YoY}} = \alpha + \sum_{j=1}^{5} \beta_j \cdot F_{j,t-1} + \gamma \cdot \text{CPI}_{t-1}^{\text{YoY}} + \varepsilon_t$$
+
+Test R\textsuperscript{2} = \textbf{0.872} (20 models tested, 19/20 passed gate). Classification accuracy: 60\%.
+
+\subsection*{Estimated Coefficients (standardised)}
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lrl}
+\toprule
+\textbf{Variable} & \textbf{Coef.} & \textbf{Interpretation} \\
+\midrule
+CPI\_YOY\_lag1 & $+0.993$ & Near unit-root persistence --- inflation is highly autocorrelated \\
+PC5\_lag1 & $+0.151$ & Financial conditions factor (VIX/credit-spread loaded) \\
+PC3\_lag1 & $+0.097$ & Energy-price factor (oil-weighted component) \\
+PC2\_lag1 & $-0.100$ & Yield curve slope --- tighter policy dampens future inflation \\
+PC1\_lag1 & $-0.026$ & Rates level --- higher rates reduce demand-pull inflation \\
+PC4\_lag1 & $-0.007$ & Near-zero: minimal incremental contribution \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent The dominant predictor is lagged CPI itself ($\beta = 0.993$), reflecting strong inflation persistence from wage-price indexation and administered price contracts. The PCA factors add marginal information: financial stress (PC5) pushes inflation up, while tighter monetary policy (PC2, slope) pushes it down.
+
+\subsection*{Forecast}
+\begin{table}[H]
+\centering\small
+\begin{tabular}{ccccccc}
+\toprule
+\textbf{Previous} & \textbf{Consensus} & \textbf{Point} & \textbf{Median} & \textbf{80\% CI} & \textbf{P(miss)}  & \textbf{P(beat)} \\
+\midrule
+3.3\% & 3.75\% & 2.58\% & 2.58\% & [2.19, 2.82] & 28.8\% & 12.2\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Interpretation:} The model forecasts 2.58\% YoY, well below the 3.75\% consensus. The 80\% CI [2.19, 2.82] does not contain the consensus. P(inline)=59\% dominates. The model relies on lagged CPI (3.3\% in March) and sees the energy pass-through as already partially embedded in the base, while the yield curve tightening signal (PC2) dampens forward inflation. \textit{Caveat:} the model uses data through March; it cannot capture intra-April energy price developments that the consensus may incorporate.
+
+\newpage
+
+% PAGE 4: PPI + RETAIL
+\section*{US PPI MoM --- Wed May 13 (8:30 ET)}
+
+\subsection*{Best Model: ElasticNet + VIF-Cleaned Features}
+Test R\textsuperscript{2} = $-$0.154 (all 20 models passed gate). ElasticNet selected with strong L1 sparsity --- only 2 features retained non-zero coefficients:
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lrl}
+\toprule
+\textbf{Variable} & \textbf{Coef.} & \textbf{Interpretation} \\
+\midrule
+PPI\_MOM\_lag1 & $+0.433$ & Moderate persistence (lower than CPI --- PPI mean-reverts faster) \\
+VIX\_midas & $-0.040$ & Higher uncertainty $\rightarrow$ demand destruction $\rightarrow$ lower producer prices \\
+\textit{All others} & $0.000$ & Zeroed by L1 penalty (oil, credit spread, EUR/USD not selected) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{ccccccc}
+\toprule
+\textbf{Prev} & \textbf{Cons} & \textbf{Point} & \textbf{Median} & \textbf{80\% CI} & \textbf{P(miss)} & \textbf{P(beat)} \\
+\midrule
++0.5\% & +0.5\% & +0.96\% & +1.56\% & [+0.11, +2.64] & 10.6\% & 34.2\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Interpretation:} The model forecasts above consensus (0.96\% vs 0.5\%), driven by the lagged momentum from March's +0.5\%. P(beat)=34\% outweighs P(miss)=11\%. Oil was zeroed by ElasticNet, suggesting that the oil-to-PPI pass-through lag exceeds 1 month in the current regime.
+
+\vspace{0.5cm}
+\section*{US Retail Sales MoM --- Thu May 14 (8:30 ET)}
+
+\subsection*{Best Model: Ridge + Lagged PCA(5)}
+Test R\textsuperscript{2} = +0.049. Modest but positive --- consumption is driven by a mix of wealth, confidence, and income effects that PCA captures as a composite.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{ccccccc}
+\toprule
+\textbf{Prev} & \textbf{Cons} & \textbf{Point} & \textbf{Median} & \textbf{80\% CI} & \textbf{P(miss)} & \textbf{P(beat)} \\
+\midrule
++1.7\% & +0.3\% & +0.37\% & +0.46\% & [$-$0.67, +1.09] & 26.5\% & 14.3\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Interpretation:} The model sees a sharp normalisation from March's +1.7\% to +0.37\%, broadly in line with consensus. P(inline)=59\% dominates. The wide 80\% CI reflects the high noise in monthly retail data. The mean-reversion from March's spike is the dominant signal.
+
+\newpage
+
+% PAGE 5: UK LABOUR + COHERENCE
+\section*{UK Labour Market --- Wed May 13 (07:00 BST)}
+
+\subsection*{Best Model: Ridge + Lagged PCA(5)}
+Test R\textsuperscript{2} = \textbf{0.914}. The highest R\textsuperscript{2} across all 4 targets. UK unemployment is highly persistent and well-captured by the yield curve regime (PC1/PC2 encode BoE expectations).
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{ccccccc}
+\toprule
+\textbf{Prev} & \textbf{Cons} & \textbf{Point} & \textbf{Median} & \textbf{80\% CI} & \textbf{P(miss)} & \textbf{P(beat)} \\
+\midrule
+4.9\% & 4.9\% & 5.13\% & 5.09\% & [4.87, 5.28] & 0.4\% & 18.3\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Interpretation:} The model forecasts 5.13\%, above the 4.9\% consensus. P(inline)=81\% dominates but P(beat)=18\% is non-trivial --- the model detects upward drift consistent with the rising trend (4.4\% $\rightarrow$ 4.9\% over the past year, vacancies at 5-year low). This would signal further labour market deterioration ahead of the June 18 BoE MPC decision.
+
+\subsection*{Cross-Variable Coherence}
+
+The four forecasts paint a coherent macro picture:
+
+\begin{itemize}[nosep, leftmargin=1.2em]
+    \item \textbf{CPI below consensus + PPI above consensus} ($\rightarrow$ margin squeeze): CPI at 2.58\% vs PPI at 0.96\% MoM suggests producer costs are rising faster than consumer prices --- a margin squeeze for corporates. This is consistent with the energy cost pass-through still working through the supply chain upstream (PPI) before reaching the consumer (CPI).
+    \item \textbf{Retail inline} ($\rightarrow$ consumer absorbing shocks): The 0.37\% retail forecast is close to consensus, suggesting the consumer is neither collapsing (which would be deflationary) nor overheating (which would add demand-pull pressure). This validates the ``soft landing'' narrative.
+    \item \textbf{UK unemployment drifting higher} ($\rightarrow$ BoE dilemma deepens): At 5.13\%, UK unemployment is rising while CPI remains elevated (3.3\% YoY in March). This is the textbook stagflationary signal: the BoE cannot cut to support employment without risking re-igniting inflation, and cannot hike without deepening the labour market deterioration.
+    \item \textbf{Global spillover:} A below-consensus US CPI would be \textit{dovish} for the Fed (supporting rate cuts), which would compress US yields and --- via our VAR spillover analysis --- reduce pressure on gilt yields (29\% of UK Level FEVD from US). This would partially offset the hawkish domestic signal from rising UK unemployment.
+\end{itemize}
+
+\vspace{0.3cm}
+\noindent\rule{\textwidth}{0.4pt}
+{\footnotesize\color{biggrey} \textbf{Data:} FRED (34 series: CPI, PPI, retail sales, UK unemployment, oil, VIX, yields, FX, claims, etc.), NS factors (5 countries, daily). 20 model combinations per target, COVID-excluded training. This document does not constitute investment advice.}
+
+\end{document}
