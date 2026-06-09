@@ -69,6 +69,19 @@ All features are strictly \textbf{lagged} (no contemporaneous information). High
     \item \textbf{PCA}: fit on train-only (ex-COVID), extract 3--5 orthogonal factors, \textbf{lag by 1 month}
 \end{enumerate}
 
+\subsection*{Principal Component Eigenstructure}
+PCA is fitted on the standardised lagged predictor universe using the training sample excluding COVID. Each principal component is an eigenvector of the predictors' covariance matrix, and its eigenvalue measures the variance explained by that component. The retained PCs therefore represent orthogonal macro channels ordered by their eigenvalues.
+
+\begin{itemize}[nosep, leftmargin=1.2em]
+    \item \textbf{PC1}: the largest eigenvalue, capturing the broad monetary policy / yield regime channel.
+    \item \textbf{PC2}: the second-largest eigenvalue, capturing curve slope and demand-pressure dynamics.
+    \item \textbf{PC3}: the third component, capturing energy / supply-side pressure and real activity momentum.
+    \item \textbf{PC4}: a confidence / wealth/income channel with lower but meaningful variance.
+    \item \textbf{PC5}: a financial stress / risk-premium channel, the smallest retained eigenvalue among the five.
+\end{itemize}
+
+The regression coefficients on PC1--PC5 are therefore best read as sensitivities to these orthogonal eigenvector channels rather than individual raw predictors.
+
 \subsection*{Model Specifications}
 \begin{itemize}[nosep, leftmargin=1.2em]
     \item \textbf{OLS}: unpenalised linear regression (baseline)
@@ -76,6 +89,8 @@ All features are strictly \textbf{lagged} (no contemporaneous information). High
     \item \textbf{ElasticNet}: L1+L2 mix, automatic feature selection via sparsity
     \item \textbf{XGBoost}: gradient-boosted trees (depth 2--4, L2=2--5, lr=0.03--0.05)
 \end{itemize}
+
+Coefficients shown in this report are taken directly from the backend results file and represent standardised linear weights for each selected model. They are used to identify the dominant macro channels and to explain the economic drivers behind each forecast.
 
 \subsection*{Probabilistic Output}
 \textbf{Point forecast:} best model refitted on full ex-COVID sample.
@@ -91,7 +106,7 @@ All features are strictly \textbf{lagged} (no contemporaneous information). High
 \vspace{-0.2cm}
 $$\widehat{\text{CPI}}_t^{\text{YoY}} = \alpha + \sum_{j=1}^{5} \beta_j \cdot F_{j,t-1} + \gamma \cdot \text{CPI}_{t-1}^{\text{YoY}} + \varepsilon_t$$
 
-Test R\textsuperscript{2} = \textbf{0.872} (20 models tested, 19/20 passed gate). Classification accuracy: 60\%.
+Test R\textsuperscript{2} = \textbf{0.872} (20 models tested, 19/20 passed gate). Classification accuracy: 60\%. The PC channels are orthogonal eigenvectors and their eigenvalues determine the variance explained by each component.
 
 \subsection*{Estimated Coefficients (standardised)}
 \begin{table}[H]
@@ -132,7 +147,7 @@ PC4\_lag1 & $-0.007$ & Near-zero: minimal incremental contribution \\
 \section*{US PPI MoM --- Wed May 13 (8:30 ET)}
 
 \subsection*{Best Model: ElasticNet + VIF-Cleaned Features}
-Test R\textsuperscript{2} = $-$0.154 (all 20 models passed gate). ElasticNet selected with strong L1 sparsity --- only 2 features retained non-zero coefficients:
+Test R\textsuperscript{2} = $-$0.154 (all 20 models passed gate). ElasticNet selected with strong L1 sparsity --- only a few variables retain material weight:
 
 \begin{table}[H]
 \centering\small
@@ -140,9 +155,10 @@ Test R\textsuperscript{2} = $-$0.154 (all 20 models passed gate). ElasticNet sel
 \toprule
 \textbf{Variable} & \textbf{Coef.} & \textbf{Interpretation} \\
 \midrule
-PPI\_MOM\_lag1 & $+0.433$ & Moderate persistence (lower than CPI --- PPI mean-reverts faster) \\
+PPI\_MOM\_lag1 & $+0.433$ & Strong positive momentum from last month \\
+PPI\_MOM\_lag2 & $+0.084$ & Additional persistence over a two-month horizon \\
 VIX\_midas & $-0.040$ & Higher uncertainty $\rightarrow$ demand destruction $\rightarrow$ lower producer prices \\
-\textit{All others} & $0.000$ & Zeroed by L1 penalty (oil, credit spread, EUR/USD not selected) \\
+\textit{All others} & $0.000$ & Zeroed by L1 penalty (oil, credit spread, EUR/USD, level, CPI not selected) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -164,7 +180,23 @@ VIX\_midas & $-0.040$ & Higher uncertainty $\rightarrow$ demand destruction $\ri
 \section*{US Retail Sales MoM --- Thu May 14 (8:30 ET)}
 
 \subsection*{Best Model: Ridge + Lagged PCA(5)}
-Test R\textsuperscript{2} = +0.049. Modest but positive --- consumption is driven by a mix of wealth, confidence, and income effects that PCA captures as a composite.
+Test R\textsuperscript{2} = +0.049. Modest but positive --- consumption is driven by a mix of wealth, confidence, and income effects that PCA captures as a composite. The retained PCs are eigenvectors of the predictor covariance matrix, ordered by the variance each eigenvalue explains.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lrl}
+\toprule
+\textbf{Variable} & \textbf{Coef.} & \textbf{Interpretation} \\
+\midrule
+US\_RETAIL\_MOM\_lag1 & $-0.141$ & Mean reversion in retail sales after the February/March spike \\
+PC2\_lag1 & $-0.115$ & Tighter macro/financial conditions damp demand \\
+PC4\_lag1 & $+0.075$ & Positive consumer confidence/wealth signal supporting spending \\
+PC5\_lag1 & $+0.023$ & Risk-appetite or global demand lift \\
+PC3\_lag1 & $-0.019$ & Small drag from residual energy/confidence factor \\
+PC1\_lag1 & $+0.001$ & Near-zero: policy-rate / term structure effect is negligible \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{table}[H]
 \centering\small
@@ -185,7 +217,23 @@ Test R\textsuperscript{2} = +0.049. Modest but positive --- consumption is drive
 \section*{UK Labour Market --- Wed May 13 (07:00 BST)}
 
 \subsection*{Best Model: Ridge + Lagged PCA(5)}
-Test R\textsuperscript{2} = \textbf{0.914}. The highest R\textsuperscript{2} across all 4 targets. UK unemployment is highly persistent and well-captured by the yield curve regime (PC1/PC2 encode BoE expectations).
+Test R\textsuperscript{2} = \textbf{0.914}. The highest R\textsuperscript{2} across all 4 targets. UK unemployment is highly persistent and well-captured by the yield curve regime (PC1/PC2 encode BoE expectations). These PCs are eigenvectors of the standardized predictor covariance matrix, with eigenvalues ranking their variance contribution.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{lrl}
+\toprule
+\textbf{Variable} & \textbf{Coef.} & \textbf{Interpretation} \\
+\midrule
+UK\_UNEMP\_lag1 & $+1.244$ & Very strong persistence in the unemployment rate \\
+PC1\_lag1 & $-0.207$ & Strong macro/regime factor: tighter BoE expectations reduce unemployment slightly \\
+PC2\_lag1 & $-0.069$ & Additional policy/labour slack signal that tempers jobless growth \\
+PC4\_lag1 & $+0.083$ & Financial stress or demand weakness raising unemployment \\
+PC5\_lag1 & $+0.104$ & Global risk/real-economy pressure lifting joblessness \\
+PC3\_lag1 & $-0.015$ & Very small negative contribution from residual cyclical factor \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{table}[H]
 \centering\small
