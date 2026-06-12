@@ -1,0 +1,2933 @@
+Option Explicit
+
+' =============================================================================
+' PNL Explainer BiG - Optimized & Corrected Workflow Module (v2)
+'
+' This revision applies the full diagnostic remediation:
+'   * Bond ticker resolver tries /isin/ first, then Corp/Govt/Mtge/M-Mkt.
+'   * I-spread / G-spread / DV01 / SpreadDuration are DERIVED, not pulled from
+'     fields that are Not Applicable / Invalid for this book.
+'   * All config references inside FormulaR1C1 use CfgR1C1() (no literal sheet
+'     name concatenation, which broke DaysToDeliv and futures price pulls).
+'   * Futures CTD bond resolved from OPICS CTD_ISIN, not FUT_CTD_BOND.
+'   * Futures generic ticker built from a CurveMap/FutMap lookup table, not
+'     blind  code & "1 Comdty".
+'   * T0 missing is preserved as "" (never silently coerced to 0), so spread
+'     deltas are blanked instead of producing fake spread PnL.
+'   * Status columns require T0 presence; PNL_Attribution is fully rebuilt to
+'     clear stale #REF! formulas.
+'
+' Buttons:
+'   0) SetupWorkbookFinalLayout
+'   1) LoadOPICS_Bonds
+'   2) LoadOPICS_Hedges
+'   3) Refresh_BBG_T1_Step3   (3A curves, 3B tickers, 3C bonds, 3D futures, 3E derived)
+'   4) Freeze_T0_Snapshot_Step4
+'   5) RecalculatePNL_Step5
+'   *) RebuildPNLOnly         (fast PNL-only rebuild to clear #REF!)
+'
+' Core PnL mapping:  y = r + g + q + i
+'   r = OIS rate;  g = Gov - OIS;  q = Swap - Gov;  i = I-spread
+' =============================================================================
+
+
+' =============================================================================
+' CONFIG CELLS
+' =============================================================================
+
+Private Const CFG_T0_DATE          As String = "B4"
+Private Const CFG_T1_DATE          As String = "B5"
+Private Const CFG_HTC_PORTS        As String = "B8"
+Private Const CFG_SELL_PORTS       As String = "B9"
+Private Const CFG_BR               As String = "B10"
+Private Const CFG_DSN              As String = "B13"
+Private Const CFG_UID              As String = "B14"
+Private Const CFG_ISIN_TYPE        As String = "B15"
+Private Const CFG_BBG_SUFFIX       As String = "B18"
+Private Const CFG_FX_FIELD         As String = "B19"
+Private Const CFG_SPREAD_FRAMEWORK As String = "B20"
+Private Const CFG_LAST_LOAD        As String = "B22"
+Private Const CFG_BOND_CNT         As String = "B23"
+Private Const CFG_SWAP_CNT         As String = "B24"
+Private Const CFG_FUT_CNT          As String = "B25"
+Private Const CFG_LAST_BBG         As String = "B26"
+
+Private Const CFG_BASE_CCY            As String = "B37"
+Private Const CFG_FX_FIX_SOURCE       As String = "B38"
+Private Const CFG_FUT_PRICE_FIELD     As String = "B39"
+Private Const CFG_BBG_TIMEOUT         As String = "B40"
+Private Const CFG_YEARSLEFT_BASIS     As String = "B41"
+Private Const CFG_CURVE_SOURCE        As String = "B42"
+Private Const CFG_FUNDING_SOURCE      As String = "B43"
+Private Const CFG_ACTUAL_PNL_SOURCE   As String = "B44"
+Private Const CFG_DIAGNOSTICS_ENABLED As String = "B45"
+Private Const CFG_REBUILD_LAYOUT      As String = "B46"
+Private Const CFG_T0_BATCH            As String = "B47"   ' bonds processed per T0 BDH batch
+
+
+' =============================================================================
+' SHEETS / ROWS
+' =============================================================================
+
+Private Const SH_CONFIG As String = "Config"
+Private Const SH_OIS    As String = "OIS_Curves"
+Private Const SH_BONDS  As String = "Bonds"
+Private Const SH_SWAPS  As String = "Swaps"
+Private Const SH_FUTURES As String = "Futures"
+Private Const SH_PNL    As String = "PNL_Attribution"
+Private Const SH_DASH   As String = "Dashboard"
+Private Const SH_DIAG   As String = "Diagnostics"
+Private Const SH_FUTMAP As String = "FutMap"      ' OPICS code -> Bloomberg generic
+Private Const SH_T0_STG As String = "BBG_T0_Staging" ' hidden support sheet for T0 BDH array pulls
+
+Private Const DATA_ROW      As Long = 5
+Private Const BOND_DATA_ROW As Long = 5
+Private Const N_BOND_ROWS   As Long = 600
+Private Const N_SWAP_ROWS   As Long = 100
+Private Const N_FUT_ROWS    As Long = 50
+
+Private Const CURVE_FIRST_ROW As Long = 7
+Private Const CURVE_LAST_ROW  As Long = 19
+
+Private Const COL_BBG_TICKER As Long = 44       ' AR
+Private Const COL_BBG_TICKER_STATUS As Long = 45 ' AS
+
+Private Const COL_BBG_CAND_FIRST As Long = 76   ' BX
+Private Const COL_BBG_CAND_LAST  As Long = 85   ' CG
+
+
+' =============================================================================
+' BLOOMBERG FIELD CONSTANTS
+' =============================================================================
+
+Private Const BBG_PX_LAST          As String = "PX_LAST"
+Private Const BBG_PX_DIRTY_MID     As String = "PX_DIRTY_MID"
+Private Const BBG_YLD_YTM_MID      As String = "YLD_YTM_MID"
+Private Const BBG_DUR_ADJ_MID      As String = "DUR_ADJ_MID"
+Private Const BBG_CONVEXITY        As String = "CONVEXITY"
+Private Const BBG_CONVEXITY_OAS    As String = "CONVEXITY_OAS"
+Private Const BBG_ZSPREAD          As String = "Z_SPRD_MID"
+Private Const BBG_ASW              As String = "ASSET_SWAP_SPD_MID"
+Private Const BBG_OAS              As String = "OAS_SPREAD_MID"
+Private Const BBG_DUR_ADJ_OAS_MID  As String = "DUR_ADJ_OAS_MID"
+Private Const BBG_PRICING_SOURCE   As String = "PRICING_SOURCE"
+
+Private Const BBG_FUT_VAL_PT       As String = "FUT_VAL_PT"
+Private Const BBG_FUT_CONT_SIZE    As String = "FUT_CONT_SIZE"
+
+
+' =============================================================================
+' DIAGNOSTIC STATE
+'   mLastFormulaTarget records the most recent range a formula was being written
+'   to, so step error handlers can report exactly WHERE a .FormulaR1C1 assignment
+'   failed (e.g. an over-nested formula -> Excel run-time error 1004) instead of a
+'   hardcoded "most likely location" guess.
+' =============================================================================
+
+Private mLastFormulaTarget As String
+
+' Captures the live Err object into a formatted string.  MUST be called as the very
+' first statement of an error handler, BEFORE any Application.* reset (re-enabling
+' events / restoring Calculation fires recalcs that clear Err -> the old handlers
+' printed "Error 0").  Includes the last formula target when one is set.
+Private Function CaptureErrInfo() As String
+    Dim s As String
+    s = "Error " & Err.Number & ": " & Err.Description
+    If Len(mLastFormulaTarget) > 0 Then
+        s = s & vbCrLf & "Last formula target: " & mLastFormulaTarget
+    End If
+    CaptureErrInfo = s
+End Function
+
+
+' =============================================================================
+' BUTTON 0 - SETUP FINAL LAYOUT
+' =============================================================================
+
+Public Sub SetupWorkbookFinalLayout()
+    Dim wb As Workbook
+    Set wb = ThisWorkbook
+
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+
+    SetupExtendedConfig wb.Worksheets(SH_CONFIG)
+    SetupNamedRanges
+    EnsureFutMapSheet
+    SetupCurvesLayout wb.Worksheets(SH_OIS)
+    SetupBondsFinalHeaders wb.Worksheets(SH_BONDS)
+    SetupFuturesFinalHeaders wb.Worksheets(SH_FUTURES)
+    SetupSwapsFinalHeaders wb.Worksheets(SH_SWAPS)
+    SetupPNLAttributionHeaders wb.Worksheets(SH_PNL)
+    SetupDiagnosticsSheet
+
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+
+    MsgBox "Final workbook layout created/updated.", vbInformation, "Setup Complete"
+End Sub
+
+
+' =============================================================================
+' CONFIG R1C1 HELPER  (the single fix that repairs DaysToDeliv & futures pulls)
+'   Returns an absolute cross-sheet R1C1 reference to a Config cell, e.g.
+'   CfgR1C1(CFG_T1_DATE) -> "'Config'!R5C2"
+' =============================================================================
+
+Private Function CfgR1C1(ByVal a1Cell As String) As String
+    Dim rng As Range
+    Set rng = ThisWorkbook.Worksheets(SH_CONFIG).Range(a1Cell)
+    CfgR1C1 = "'" & SH_CONFIG & "'!R" & rng.Row & "C" & rng.Column
+End Function
+
+
+' =============================================================================
+' NAMED RANGES  (corrected - the original Names.Add was a no-op)
+' =============================================================================
+
+Private Sub SetupNamedRanges()
+    ' Define any workbook-level names the formulas rely on here.
+    AddOrReplaceName "Cfg_T0", "'" & SH_CONFIG & "'!" & CFG_T0_DATE
+    AddOrReplaceName "Cfg_T1", "'" & SH_CONFIG & "'!" & CFG_T1_DATE
+    AddOrReplaceName "Cfg_FxFix", "'" & SH_CONFIG & "'!" & CFG_FX_FIX_SOURCE
+    AddOrReplaceName "Cfg_FutPxField", "'" & SH_CONFIG & "'!" & CFG_FUT_PRICE_FIELD
+    AddOrReplaceName "Cfg_SpreadFwk", "'" & SH_CONFIG & "'!" & CFG_SPREAD_FRAMEWORK
+End Sub
+
+Private Sub AddOrReplaceName(ByVal nameText As String, ByVal refersToText As String)
+    On Error Resume Next
+    ThisWorkbook.Names(nameText).Delete
+    On Error GoTo 0
+
+    If Left$(refersToText, 1) <> "=" Then refersToText = "=" & refersToText
+    ThisWorkbook.Names.Add Name:=nameText, RefersTo:=refersToText
+End Sub
+
+
+' =============================================================================
+' FUTURES TICKER MAP SHEET  (OPICS contract code -> Bloomberg generic)
+'   Replaces blind  code & "1 Comdty".  Verify the "verify" rows on the desk.
+' =============================================================================
+
+Private Sub EnsureFutMapSheet()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets(SH_FUTMAP)
+    On Error GoTo 0
+
+    If ws Is Nothing Then
+        Set ws = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        ws.Name = SH_FUTMAP
+    End If
+
+    ws.Range("A1:D1").Value = Array("OPICS_Code", "Bloomberg_Generic", "Description", "Status")
+    ws.Range("A1:D1").Font.Bold = True
+
+    ' Only (re)write seed rows if the table is empty, so manual edits survive.
+    If CleanText(ws.Range("A2").Value) = "" Then
+        Dim m As Variant, i As Long
+        m = Array( _
+            Array("DU", "DU1 Comdty", "Euro Schatz", "OK"), _
+            Array("OE", "OE1 Comdty", "Euro Bobl", "OK"), _
+            Array("RX", "RX1 Comdty", "Euro Bund", "OK"), _
+            Array("UB", "UB1 Comdty", "Euro Buxl", "OK"), _
+            Array("OAT", "OAT1 Comdty", "OAT future", "OK"), _
+            Array("IK", "IK1 Comdty", "BTP future", "verify"), _
+            Array("FR", "", "Mapping unverified", "verify"), _
+            Array("RP", "", "Mapping unverified", "verify"), _
+            Array("G", "", "Mapping unverified", "verify"), _
+            Array("EC", "", "Mapping unverified", "verify"), _
+            Array("UXY", "", "Mapping unverified", "verify"))
+        For i = LBound(m) To UBound(m)
+            ws.Cells(i + 2, 1).Resize(1, 4).Value = m(i)
+        Next i
+    End If
+
+    AddOrReplaceName "FutMapTable", "'" & SH_FUTMAP & "'!$A$2:$B$200"
+End Sub
+
+
+' =============================================================================
+' DIAGNOSTIC - TEST OPICS CONNECTION
+' =============================================================================
+
+Public Sub Test_OPICS_Connection()
+    Dim wsCfg As Worksheet
+    Set wsCfg = ThisWorkbook.Worksheets(SH_CONFIG)
+
+    Dim serverName As String, uid As String
+    serverName = Replace(CleanText(wsCfg.Range(CFG_DSN).Value), "/", "\")
+    uid = CleanText(wsCfg.Range(CFG_UID).Value)
+
+    Dim conn As Object
+    Set conn = CreateObject("ADODB.Connection")
+
+    If OpenOPICS(conn, wsCfg) Then
+        MsgBox "OPICS connection SUCCESS." & vbCrLf & vbCrLf & _
+               "Server: " & serverName & vbCrLf & _
+               "Excel: " & GetExcelBitness() & vbCrLf & _
+               "Auth: " & IIf(uid = "", "Windows", "SQL user/pass"), _
+               vbInformation, "OPICS Connection Test"
+        On Error Resume Next
+        conn.Close
+        On Error GoTo 0
+    End If
+End Sub
+
+
+' =============================================================================
+' BUTTON 1 - LOAD OPICS BONDS
+' =============================================================================
+
+Public Sub LoadOPICS_Bonds()
+    Dim wb As Workbook: Set wb = ThisWorkbook
+    Dim wsCfg As Worksheet: Set wsCfg = wb.Worksheets(SH_CONFIG)
+    Dim wsBnd As Worksheet: Set wsBnd = wb.Worksheets(SH_BONDS)
+
+    Update_Config_Dates_5pmUTC wsCfg
+    SetupExtendedConfig wsCfg
+    SetupBondsFinalHeaders wsBnd
+
+    Dim htcInvTypes As String
+    Dim sellInvTypes As String
+    Dim isinType As String
+    Dim asOf As String
+    Dim branchCode As String
+
+    htcInvTypes = CleanText(wsCfg.Range(CFG_HTC_PORTS).Value)
+    sellInvTypes = CleanText(wsCfg.Range(CFG_SELL_PORTS).Value)
+    isinType = CleanText(wsCfg.Range(CFG_ISIN_TYPE).Value)
+    branchCode = CleanText(wsCfg.Range(CFG_BR).Value)
+    asOf = GetAsOfDateString(wsCfg)
+
+    If htcInvTypes = "" And sellInvTypes = "" Then
+        MsgBox "No INVTYPE codes in Config B8/B9 (e.g. B8=H, B9=A).", vbExclamation
+        Exit Sub
+    End If
+
+    If isinType = "" Then
+        MsgBox "Missing ISIN type in Config " & CFG_ISIN_TYPE & ".", vbExclamation
+        Exit Sub
+    End If
+
+    If branchCode = "" Then
+        MsgBox "Missing OPICS branch in Config " & CFG_BR & ".", vbExclamation
+        Exit Sub
+    End If
+
+    Dim allInvTypes As String
+    allInvTypes = BuildInClause(htcInvTypes) & "," & BuildInClause(sellInvTypes)
+    allInvTypes = TrimChar(Replace(allInvTypes, ",,", ","), ",")
+
+    If allInvTypes = "" Then
+        MsgBox "INVTYPE list could not be built from Config B8/B9.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim conn As Object: Set conn = CreateObject("ADODB.Connection")
+    If Not OpenOPICS(conn, wsCfg) Then Exit Sub
+
+    Dim rs As Object: Set rs = CreateObject("ADODB.Recordset")
+
+    On Error GoTo BondErr
+
+    Dim sql As String
+    sql = GetBondSelectQuery(allInvTypes, isinType, asOf, branchCode)
+
+    Debug.Print sql
+
+    rs.Open sql, conn, 0, 1
+
+    wsBnd.Range("A" & BOND_DATA_ROW & ":CG" & CStr(BOND_DATA_ROW + N_BOND_ROWS - 1)).ClearContents
+
+    Dim r As Long: r = BOND_DATA_ROW
+    Dim bondCount As Long: bondCount = 0
+
+    Do While Not rs.EOF And r < BOND_DATA_ROW + N_BOND_ROWS
+
+        Dim coupon As Double: coupon = 0
+        If Not IsNull(Fld(rs, "Coupon_Dec")) Then
+            coupon = CDblSafe(Fld(rs, "Coupon_Dec"))
+            If Abs(coupon) > 1 Then coupon = coupon / 100
+        End If
+
+        Dim fundRate As Double: fundRate = 0
+        If Not IsNull(Fld(rs, "FundingRate_Dec")) Then
+            fundRate = CDblSafe(Fld(rs, "FundingRate_Dec"))
+            If Abs(fundRate) > 1 Then fundRate = fundRate / 100
+        End If
+
+        With wsBnd
+            .Cells(r, 1).Value = NullToStr(Fld(rs, "ISIN"))
+            .Cells(r, 2).Value = NullToStr(Fld(rs, "Name"))
+            .Cells(r, 3).Value = NullToStr(Fld(rs, "Currency"))
+            .Cells(r, 4).Value = coupon
+            .Cells(r, 5).Value = NullToStr(Fld(rs, "CouponFreq"))
+            .Cells(r, 6).Value = NullToDate(Fld(rs, "MaturityDate"))
+            .Cells(r, 7).Value = CDblSafe(Fld(rs, "Notional"))
+            .Cells(r, 8).Value = CDblSafe(Fld(rs, "AvgCost"))
+            .Cells(r, 9).Value = NullToDate(Fld(rs, "EntryDate"))
+            .Cells(r, 10).Value = NullToStr(Fld(rs, "Portfolio"))
+            .Cells(r, 11).Value = NullToStr(Fld(rs, "AcctgCat"))
+            .Cells(r, 14).Value = fundRate
+            .Cells(r, 15).Value = NullToStr(Fld(rs, "Branch"))
+            .Cells(r, 38).Value = CDblSafe(Fld(rs, "BookVal_EUR"))  ' AL
+            .Cells(r, 69).Value = 1                                 ' BQ PositionSide
+        End With
+
+        bondCount = bondCount + 1
+        r = r + 1
+        rs.MoveNext
+    Loop
+
+    rs.Close
+    conn.Close
+
+    wsCfg.Range(CFG_LAST_LOAD).Value = Now()
+    wsCfg.Range(CFG_BOND_CNT).Value = bondCount
+
+    MsgBox CStr(bondCount) & " bonds loaded from OPICS for branch " & branchCode & ".", vbInformation
+    Exit Sub
+
+BondErr:
+    MsgBox "Error loading OPICS bonds:" & vbCrLf & Err.Description, vbCritical
+
+    On Error Resume Next
+    If Not rs Is Nothing Then
+        If rs.State <> 0 Then rs.Close
+    End If
+    If Not conn Is Nothing Then
+        If conn.State <> 0 Then conn.Close
+    End If
+    On Error GoTo 0
+End Sub
+
+
+' =============================================================================
+' BUTTON 2 - LOAD OPICS HEDGES
+' =============================================================================
+
+Public Sub LoadOPICS_Hedges()
+    Dim wb As Workbook: Set wb = ThisWorkbook
+    Dim wsCfg As Worksheet: Set wsCfg = wb.Worksheets(SH_CONFIG)
+    Dim wsBnd As Worksheet: Set wsBnd = wb.Worksheets(SH_BONDS)
+    Dim wsSw As Worksheet:  Set wsSw = wb.Worksheets(SH_SWAPS)
+    Dim wsFut As Worksheet: Set wsFut = wb.Worksheets(SH_FUTURES)
+
+    Update_Config_Dates_5pmUTC wsCfg
+    SetupFuturesFinalHeaders wsFut
+    SetupSwapsFinalHeaders wsSw
+
+    If CleanText(wsBnd.Cells(BOND_DATA_ROW, 1).Value) = "" Then
+        MsgBox "No bonds loaded. Run Button 1 first.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim isinType As String: isinType = CleanText(wsCfg.Range(CFG_ISIN_TYPE).Value)
+    If isinType = "" Then MsgBox "Missing ISIN type in Config " & CFG_ISIN_TYPE & ".", vbExclamation: Exit Sub
+
+    Dim asOf As String:   asOf = GetAsOfDateString(wsCfg)
+    Dim allPorts As String: allPorts = "'PORT'"
+    Dim isinList As String: isinList = BuildLoadedBondISINList(wsBnd)
+
+    Dim conn As Object: Set conn = CreateObject("ADODB.Connection")
+    If Not OpenOPICS(conn, wsCfg) Then Exit Sub
+    Dim rs As Object: Set rs = CreateObject("ADODB.Recordset")
+
+    On Error GoTo HedgeErr
+
+    ' --- Swaps -------------------------------------------------------------
+    rs.Open GetSwapSelectQuery(allPorts, isinList, isinType, asOf), conn, 0, 1
+    wsSw.Range("A" & DATA_ROW & ":AF" & CStr(DATA_ROW + N_SWAP_ROWS - 1)).ClearContents
+
+    Dim swapCount As Long: swapCount = 0
+    Dim sr As Long: sr = DATA_ROW
+    Do While Not rs.EOF And sr < DATA_ROW + N_SWAP_ROWS
+        With wsSw
+            .Cells(sr, 1).Value = NullToStr(Fld(rs, "DealID"))
+            .Cells(sr, 2).Value = NullToStr(Fld(rs, "Ccy"))
+            .Cells(sr, 3).Value = NullToNumBlank(Fld(rs, "Notional"))
+            .Cells(sr, 4).Value = NullToNumBlank(Fld(rs, "FixedRate"))
+            .Cells(sr, 5).Value = NullToStr(Fld(rs, "FloatIndex"))
+            .Cells(sr, 6).Value = NullToNumBlank(Fld(rs, "FloatSpread"))
+            .Cells(sr, 7).Value = NullToDate(Fld(rs, "StartDate"))
+            .Cells(sr, 8).Value = NullToDate(Fld(rs, "EndDate"))
+            .Cells(sr, 9).Value = NullToStr(Fld(rs, "PayFixed"))
+            .Cells(sr, 10).Value = NullToStr(Fld(rs, "Portfolio"))
+            .Cells(sr, 11).Value = NullToStr(Fld(rs, "LinkedISIN"))
+            .Cells(sr, 12).Value = NullToStr(Fld(rs, "CptyName"))
+            .Cells(sr, 25).Value = "Missing economics"
+            .Cells(sr, 26).Value = "NONE"
+        End With
+        LinkSwapToBond wsBnd, CleanText(Fld(rs, "LinkedISIN")), NullToStr(Fld(rs, "DealID"))
+        swapCount = swapCount + 1
+        sr = sr + 1
+        rs.MoveNext
+    Loop
+    rs.Close
+
+    ' --- Futures -----------------------------------------------------------
+    rs.Open GetFuturesSelectQuery(allPorts, isinType, asOf), conn, 0, 1
+    wsFut.Range("A" & DATA_ROW & ":AI" & CStr(DATA_ROW + N_FUT_ROWS - 1)).ClearContents
+
+    Dim futCount As Long: futCount = 0
+    Dim fr As Long: fr = DATA_ROW
+    Do While Not rs.EOF And fr < DATA_ROW + N_FUT_ROWS
+        With wsFut
+            .Cells(fr, 1).Value = NullToStr(Fld(rs, "ContractCode"))
+            .Cells(fr, 2).Value = NullToStr(Fld(rs, "Exchange"))
+            .Cells(fr, 3).Value = NullToStr(Fld(rs, "Currency"))
+            .Cells(fr, 4).Value = CDblSafe(Fld(rs, "Contracts"))
+            .Cells(fr, 5).Value = CDblSafe(Fld(rs, "FaceValue"))
+            .Cells(fr, 6).Value = NullToDate(Fld(rs, "DelivDate"))
+            .Cells(fr, 7).Value = NullToStr(Fld(rs, "CTD_ISIN"))
+            .Cells(fr, 8).Value = CDblSafe(Fld(rs, "CTD_CF"))
+            .Cells(fr, 9).Value = NullToStr(Fld(rs, "Portfolio"))
+            .Cells(fr, 10).Value = NullToStr(Fld(rs, "LinkedISIN"))
+            .Cells(fr, 11).Value = CDblSafe(Fld(rs, "AvgEntryPx"))
+        End With
+        LinkFutureToBond wsBnd, CleanText(Fld(rs, "LinkedISIN")), NullToStr(Fld(rs, "ContractCode"))
+        futCount = futCount + 1
+        fr = fr + 1
+        rs.MoveNext
+    Loop
+    rs.Close
+    conn.Close
+
+    wsCfg.Range(CFG_SWAP_CNT).Value = swapCount
+    wsCfg.Range(CFG_FUT_CNT).Value = futCount
+    MsgBox CStr(swapCount) & " swap headers and " & CStr(futCount) & " futures loaded." & vbCrLf & _
+           "Swap economics are not fabricated.", vbInformation
+    Exit Sub
+
+HedgeErr:
+    MsgBox "Error loading OPICS hedges:" & vbCrLf & Err.Description, vbCritical
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    If Not conn Is Nothing Then conn.Close
+    On Error GoTo 0
+End Sub
+
+
+' =============================================================================
+' BUTTON 3 - OPTIMIZED BLOOMBERG T1
+' =============================================================================
+
+Public Sub Refresh_BBG_T1_Step3()
+    Dim oldCalc As XlCalculation: oldCalc = Application.Calculation
+    On Error GoTo CleanFail
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+
+    Refresh_BBG_Curves_T1_Step3A
+    Resolve_BBG_BondTickers_Step3B
+    Refresh_BBG_Bonds_T1_Step3C
+    Refresh_BBG_Futures_T1_Step3D
+    Recalc_T1_Derived_Step3E
+
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    ThisWorkbook.Worksheets(SH_CONFIG).Range(CFG_LAST_BBG).Value = Now()
+    MsgBox "Step 3 complete: optimized T1 Bloomberg refresh finished.", vbInformation
+    Exit Sub
+CleanFail:
+    Dim eInfo As String: eInfo = CaptureErrInfo()
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    MsgBox "Step 3 failed. " & eInfo, vbCritical
+End Sub
+
+
+Public Sub Refresh_BBG_Curves_T1_Step3A()
+    Dim wsCfg As Worksheet: Set wsCfg = ThisWorkbook.Worksheets(SH_CONFIG)
+    Dim ws As Worksheet:    Set ws = ThisWorkbook.Worksheets(SH_OIS)
+    Dim oldCalc As XlCalculation: oldCalc = Application.Calculation
+    On Error GoTo CleanFail
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+
+    WriteCurves_T1_BDP_Efficient ws
+    RefreshBloombergAndWaitMany wsCfg, _
+        ws.Range("E7:E19"), ws.Range("H7:H19"), ws.Range("K7:K19"), _
+        ws.Range("V7:V19"), ws.Range("Y7:Y19"), ws.Range("AB7:AB19"), _
+        ws.Range("AM7:AM19"), ws.Range("AP7:AP19"), ws.Range("AS7:AS19")
+    ws.Calculate
+    LogDiagnosticsForRanges "Step3A_Curves_T1", _
+        ws.Range("E7:E19"), ws.Range("H7:H19"), ws.Range("K7:K19"), _
+        ws.Range("V7:V19"), ws.Range("Y7:Y19"), ws.Range("AB7:AB19"), _
+        ws.Range("AM7:AM19"), ws.Range("AP7:AP19"), ws.Range("AS7:AS19")
+
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Exit Sub
+CleanFail:
+    Dim eInfo As String: eInfo = CaptureErrInfo()
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    MsgBox "Step 3A failed. " & eInfo, vbCritical
+End Sub
+
+
+Public Sub Resolve_BBG_BondTickers_Step3B()
+    Dim wsCfg As Worksheet: Set wsCfg = ThisWorkbook.Worksheets(SH_CONFIG)
+    Dim ws As Worksheet:    Set ws = ThisWorkbook.Worksheets(SH_BONDS)
+    Dim lastRow As Long:    lastRow = LastBondDataRow(ws)
+    If lastRow < DATA_ROW Then Exit Sub
+
+    Dim oldCalc As XlCalculation: oldCalc = Application.Calculation
+    On Error GoTo CleanFail
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+
+    WriteBondSecurityCandidates ws, lastRow
+
+    ws.Range("AR" & DATA_ROW & ":AR" & lastRow).FormulaR1C1 = BBGParseFormulaR1C1()
+
+    ws.Range("AS" & DATA_ROW & ":AS" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",IF(OR(RC44="""",RC44=""UNKNOWN""),""UNKNOWN"",""OK""))"
+
+    RefreshBloombergAndWaitMany wsCfg, ws.Range("AR" & DATA_ROW & ":AR" & lastRow)
+    ws.Calculate
+    LogDiagnosticsForRanges "Step3B_Resolve_Bond_Tickers", ws.Range("AR" & DATA_ROW & ":AS" & lastRow)
+
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Exit Sub
+CleanFail:
+    Dim eInfo As String: eInfo = CaptureErrInfo()
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    MsgBox "Step 3B failed. " & eInfo, vbCritical
+End Sub
+
+
+Public Sub Refresh_BBG_Bonds_T1_Step3C()
+    Dim wsCfg As Worksheet: Set wsCfg = ThisWorkbook.Worksheets(SH_CONFIG)
+    Dim ws As Worksheet:    Set ws = ThisWorkbook.Worksheets(SH_BONDS)
+    Dim lastRow As Long:    lastRow = LastBondDataRow(ws)
+    If lastRow < DATA_ROW Then Exit Sub
+
+    Dim oldCalc As XlCalculation: oldCalc = Application.Calculation
+    On Error GoTo CleanFail
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+
+    WriteBondSecurityCandidates ws, lastRow
+    WriteBonds_T1_BDP_Efficient ws, lastRow
+
+    RefreshBloombergAndWaitMany wsCfg, _
+        ws.Range("T" & DATA_ROW & ":T" & lastRow), _
+        ws.Range("V" & DATA_ROW & ":AC" & lastRow), _
+        ws.Range("AT" & DATA_ROW & ":AT" & lastRow), _
+        ws.Range("AY" & DATA_ROW & ":BD" & lastRow), _
+        ws.Range("BS" & DATA_ROW & ":BS" & lastRow)
+
+    ws.Calculate
+
+    LogDiagnosticsForRanges "Step3C_Bonds_T1", _
+        ws.Range("V" & DATA_ROW & ":AC" & lastRow), _
+        ws.Range("AT" & DATA_ROW & ":AT" & lastRow), _
+        ws.Range("AY" & DATA_ROW & ":BD" & lastRow)
+
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Exit Sub
+CleanFail:
+    Dim eInfo As String: eInfo = CaptureErrInfo()
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    MsgBox "Step 3C failed." & vbCrLf & vbCrLf & eInfo, vbCritical
+End Sub
+
+
+Public Sub Refresh_BBG_Futures_T1_Step3D()
+    Dim wsCfg As Worksheet: Set wsCfg = ThisWorkbook.Worksheets(SH_CONFIG)
+    Dim ws As Worksheet:    Set ws = ThisWorkbook.Worksheets(SH_FUTURES)
+    Dim lastRow As Long:    lastRow = LastFutureDataRow(ws)
+    If lastRow < DATA_ROW Then Exit Sub
+
+    Dim oldCalc As XlCalculation: oldCalc = Application.Calculation
+    On Error GoTo CleanFail
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+
+    WriteFutures_T1_BDP_Efficient ws, lastRow
+    RefreshBloombergAndWaitMany wsCfg, _
+        ws.Range("M" & DATA_ROW & ":N" & lastRow), _
+        ws.Range("Y" & DATA_ROW & ":AC" & lastRow), _
+        ws.Range("AF" & DATA_ROW & ":AH" & lastRow), _
+        ws.Range("O" & DATA_ROW & ":P" & lastRow)
+    ws.Calculate
+    LogDiagnosticsForRanges "Step3D_Futures_T1", _
+        ws.Range("M" & DATA_ROW & ":N" & lastRow), _
+        ws.Range("O" & DATA_ROW & ":P" & lastRow)
+
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Exit Sub
+CleanFail:
+    Dim eInfo As String: eInfo = CaptureErrInfo()
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    MsgBox "Step 3D failed. " & eInfo, vbCritical
+End Sub
+
+
+Public Sub Recalc_T1_Derived_Step3E()
+    Dim wsBnd As Worksheet: Set wsBnd = ThisWorkbook.Worksheets(SH_BONDS)
+    Dim wsFut As Worksheet: Set wsFut = ThisWorkbook.Worksheets(SH_FUTURES)
+    Dim wsOIS As Worksheet: Set wsOIS = ThisWorkbook.Worksheets(SH_OIS)
+    Dim lastBondRow As Long: lastBondRow = LastBondDataRow(wsBnd)
+    Dim lastFutRow As Long:  lastFutRow = LastFutureDataRow(wsFut)
+
+    Dim oldCalc As XlCalculation: oldCalc = Application.Calculation
+    On Error GoTo CleanFail
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+
+    If lastBondRow >= DATA_ROW Then WriteBondsCalculatedFormulas_Efficient wsBnd, lastBondRow
+    If lastFutRow >= DATA_ROW Then WriteFuturesCalculatedFormulas_Efficient wsFut, lastFutRow
+
+    wsOIS.Calculate
+    wsBnd.Calculate
+    wsFut.Calculate
+
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Exit Sub
+CleanFail:
+    Dim eInfo As String: eInfo = CaptureErrInfo()
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    MsgBox "Step 3E failed. " & eInfo, vbCritical
+End Sub
+
+
+' =============================================================================
+' EFFICIENT CURVE WRITERS
+' =============================================================================
+
+Private Sub WriteCurves_T1_BDP_Efficient(ws As Worksheet)
+    WriteBDPDown_Efficient ws, "C", "E", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_PX_LAST
+    WriteBDPDown_Efficient ws, "F", "H", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_YLD_YTM_MID
+    WriteBDPDown_Efficient ws, "I", "K", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_PX_LAST
+    WriteBDPDown_Efficient ws, "T", "V", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_PX_LAST
+    WriteBDPDown_Efficient ws, "W", "Y", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_YLD_YTM_MID
+    WriteBDPDown_Efficient ws, "Z", "AB", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_PX_LAST
+    WriteBDPDown_Efficient ws, "AK", "AM", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_PX_LAST
+    WriteBDPDown_Efficient ws, "AN", "AP", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_YLD_YTM_MID
+    WriteBDPDown_Efficient ws, "AQ", "AS", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_PX_LAST
+    WriteCurveDerivedFormulas_Efficient ws
+End Sub
+
+Private Sub WriteCurves_T0_BDH(ws As Worksheet)
+    WriteBDHDown ws, "C", "D", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_PX_LAST
+    WriteBDHDown ws, "F", "G", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_YLD_YTM_MID
+    WriteBDHDown ws, "I", "J", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_PX_LAST
+    WriteBDHDown ws, "T", "U", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_PX_LAST
+    WriteBDHDown ws, "W", "X", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_YLD_YTM_MID
+    WriteBDHDown ws, "Z", "AA", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_PX_LAST
+    WriteBDHDown ws, "AK", "AL", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_PX_LAST
+    WriteBDHDown ws, "AN", "AO", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_YLD_YTM_MID
+    WriteBDHDown ws, "AQ", "AR", CURVE_FIRST_ROW, CURVE_LAST_ROW, BBG_PX_LAST
+    WriteCurveDerivedFormulas_Efficient ws
+End Sub
+
+Private Sub WriteBDPDown_Efficient(ws As Worksheet, tickerCol As String, outCol As String, _
+                                   firstRow As Long, lastRow As Long, fieldName As String)
+    Dim n As Long: n = ws.Range(tickerCol & "1").Column
+    ws.Range(outCol & firstRow & ":" & outCol & lastRow).FormulaR1C1 = _
+        "=IF(RC" & n & "="""","""",IFERROR(BDP(RC" & n & ",""" & fieldName & """),""""))"
+End Sub
+
+' =============================================================================
+' FORMULA STRING HELPERS
+' =============================================================================
+
+Private Function XlBlank() As String
+    ' Returns the Excel formula token "" without quote-escaping mistakes.
+    XlBlank = Chr$(34) & Chr$(34)
+End Function
+
+Private Function XlText(ByVal s As String) As String
+    ' Wrap text as an Excel formula string literal.
+    XlText = Chr$(34) & Replace(s, Chr$(34), Chr$(34) & Chr$(34)) & Chr$(34)
+End Function
+
+
+' =============================================================================
+' BLOOMBERG SCALABLE SECURITY-CANDIDATE FORMULA HELPERS
+'
+' Logic:
+'   1) Candidate security strings are written in Bonds!BX:CG.
+'   2) AR resolves the first parseable Bloomberg security.
+'   3) Every BDP field tries AR first, then BX:CG.
+' =============================================================================
+
+Private Sub WriteBondSecurityCandidates(ByVal ws As Worksheet, ByVal lastRow As Long)
+    If lastRow < DATA_ROW Then Exit Sub
+
+    Dim f As Long
+    f = DATA_ROW
+
+    ws.Range("BX" & f & ":BX" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",RC1&"" ISIN"")"
+
+    ws.Range("BY" & f & ":BY" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",""/isin/""&RC1)"
+
+    ws.Range("BZ" & f & ":BZ" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",RC1&"" Corp"")"
+
+    ws.Range("CA" & f & ":CA" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",RC1&""@BVAL Corp"")"
+
+    ws.Range("CB" & f & ":CB" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",RC1&""@BGN Corp"")"
+
+    ws.Range("CC" & f & ":CC" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",RC1&"" Govt"")"
+
+    ws.Range("CD" & f & ":CD" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",RC1&""@BVAL Govt"")"
+
+    ws.Range("CE" & f & ":CE" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",RC1&""@BGN Govt"")"
+
+    ws.Range("CF" & f & ":CF" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",RC1&"" Mtge"")"
+
+    ws.Range("CG" & f & ":CG" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",RC1&"" M-Mkt"")"
+End Sub
+
+Private Function BBGParseFormulaR1C1() As String
+    Dim expr As String
+    Dim i As Long
+
+    expr = XlText("UNKNOWN")
+
+    For i = COL_BBG_CAND_LAST To COL_BBG_CAND_FIRST Step -1
+        expr = "IFERROR(BDP(RC" & i & ",""PARSEKYABLE_DES"")," & expr & ")"
+    Next i
+
+    BBGParseFormulaR1C1 = "=IF(RC1="""",""""," & expr & ")"
+End Function
+
+Private Function BBGTryBDPFieldExprR1C1(ByVal fieldName As String, ByVal fallbackExpr As String) As String
+    Dim expr As String
+    Dim i As Long
+
+    expr = fallbackExpr
+
+    For i = COL_BBG_CAND_LAST To COL_BBG_CAND_FIRST Step -1
+        expr = "IFERROR(BDP(RC" & i & "," & XlText(fieldName) & ")," & expr & ")"
+    Next i
+
+    expr = "IFERROR(BDP(RC" & COL_BBG_TICKER & "," & XlText(fieldName) & ")," & expr & ")"
+
+    BBGTryBDPFieldExprR1C1 = expr
+End Function
+
+' Compact variant used by MULTI-FIELD formulas.  Tries only the resolved ticker (AR=44)
+' plus the two strongest candidates (/isin/ BY=77, @BVAL Corp CA=79) instead of all 11
+' candidate columns.  This keeps deep multi-field formulas under Excel's hard 64-level
+' function-nesting cap: full per-field x per-candidate expansion (e.g. AY's 6 fields x 11
+' = 66 nested IFERROR) overflows 64 and makes .FormulaR1C1 raise run-time error 1004.
+Private Function BBGTryBDPFieldExprR1C1_Short(ByVal fieldName As String, ByVal fallbackExpr As String) As String
+    Dim shortCols As Variant
+    Dim expr As String
+    Dim k As Long
+
+    shortCols = Array(COL_BBG_TICKER, 77, 79)   ' AR (resolved), BY (/isin/), CA (@BVAL Corp)
+
+    expr = fallbackExpr
+    For k = UBound(shortCols) To LBound(shortCols) Step -1
+        expr = "IFERROR(BDP(RC" & shortCols(k) & "," & XlText(fieldName) & ")," & expr & ")"
+    Next k
+
+    BBGTryBDPFieldExprR1C1_Short = expr
+End Function
+
+Private Function BBGFirstBDPFormulaR1C1(ByVal fieldName As String, Optional ByVal fallbackExpr As String = "") As String
+    If fallbackExpr = "" Then fallbackExpr = XlBlank()
+
+    BBGFirstBDPFormulaR1C1 = _
+        "=IF(RC1="""",""""," & BBGTryBDPFieldExprR1C1(fieldName, fallbackExpr) & ")"
+End Function
+
+Private Function BBGFirstBDPMultiFieldFormulaR1C1(ByVal fields As Variant, Optional ByVal fallbackExpr As String = "") As String
+    Dim expr As String
+    Dim i As Long
+
+    If fallbackExpr = "" Then fallbackExpr = XlBlank()
+    expr = fallbackExpr
+
+    ' Use the compact (3-security) per-field expansion so nesting stays well under
+    ' Excel's 64-level limit even for 6-field columns like AY.
+    For i = UBound(fields) To LBound(fields) Step -1
+        expr = BBGTryBDPFieldExprR1C1_Short(CStr(fields(i)), expr)
+    Next i
+
+    BBGFirstBDPMultiFieldFormulaR1C1 = _
+        "=IF(RC1="""",""""," & expr & ")"
+End Function
+
+Private Function BBGAccruedInterestFormulaR1C1(ByVal cfgT1 As String) As String
+    Dim expr As String
+    Dim settleExpr As String
+    Dim i As Long
+
+    settleExpr = "TEXT(" & cfgT1 & ",""yyyymmdd"")"
+    expr = "0"
+
+    For i = COL_BBG_CAND_LAST To COL_BBG_CAND_FIRST Step -1
+        expr = "IFERROR(BDP(RC" & i & ",""ACCRUED_INTEREST"",""SETTLE_DT""," & settleExpr & ")," & expr & ")"
+    Next i
+
+    expr = "IFERROR(BDP(RC" & COL_BBG_TICKER & ",""ACCRUED_INTEREST"",""SETTLE_DT""," & settleExpr & ")," & expr & ")"
+
+    BBGAccruedInterestFormulaR1C1 = "=IF(RC1="""",""""," & expr & ")"
+End Function
+
+Private Sub WriteCurveDerivedFormulas_Efficient(ws As Worksheet)
+    ws.Range("L7:L19").FormulaR1C1 = "=IF(AND(ISNUMBER(RC7),ISNUMBER(RC4)),RC7-RC4,"""")"
+    ws.Range("M7:M19").FormulaR1C1 = "=IF(AND(ISNUMBER(RC8),ISNUMBER(RC5)),RC8-RC5,"""")"
+    ws.Range("N7:N19").FormulaR1C1 = "=IF(AND(ISNUMBER(RC10),ISNUMBER(RC7)),RC10-RC7,"""")"
+    ws.Range("O7:O19").FormulaR1C1 = "=IF(AND(ISNUMBER(RC11),ISNUMBER(RC8)),RC11-RC8,"""")"
+    ws.Range("P7:P19").FormulaR1C1 = "=IF(COUNT(RC4:RC15)=0,""Missing"",""OK"")"
+    ws.Range("AC7:AC19").FormulaR1C1 = "=IF(AND(ISNUMBER(RC24),ISNUMBER(RC21)),RC24-RC21,"""")"
+    ws.Range("AD7:AD19").FormulaR1C1 = "=IF(AND(ISNUMBER(RC25),ISNUMBER(RC22)),RC25-RC22,"""")"
+    ws.Range("AE7:AE19").FormulaR1C1 = "=IF(AND(ISNUMBER(RC27),ISNUMBER(RC24)),RC27-RC24,"""")"
+    ws.Range("AF7:AF19").FormulaR1C1 = "=IF(AND(ISNUMBER(RC28),ISNUMBER(RC25)),RC28-RC25,"""")"
+    ws.Range("AG7:AG19").FormulaR1C1 = "=IF(COUNT(RC21:RC32)=0,""Missing"",""OK"")"
+    ws.Range("AT7:AT19").FormulaR1C1 = "=IF(AND(ISNUMBER(RC41),ISNUMBER(RC38)),RC41-RC38,"""")"
+    ws.Range("AU7:AU19").FormulaR1C1 = "=IF(AND(ISNUMBER(RC42),ISNUMBER(RC39)),RC42-RC39,"""")"
+    ws.Range("AV7:AV19").FormulaR1C1 = "=IF(AND(ISNUMBER(RC44),ISNUMBER(RC41)),RC44-RC41,"""")"
+    ws.Range("AW7:AW19").FormulaR1C1 = "=IF(AND(ISNUMBER(RC45),ISNUMBER(RC42)),RC45-RC42,"""")"
+    ws.Range("AX7:AX19").FormulaR1C1 = "=IF(COUNT(RC38:RC49)=0,""Missing"",""OK"")"
+End Sub
+
+
+' Tracked formula write: records the target range in mLastFormulaTarget before the
+' assignment so an over-nested / invalid formula (Excel run-time 1004) is pinpointed by
+' the step error handler instead of guessed at.
+Private Sub PutBondF(ByVal ws As Worksheet, ByVal col As String, ByVal f As Long, _
+                     ByVal lastRow As Long, ByVal formula As String)
+    mLastFormulaTarget = ws.Name & "!" & col & f & ":" & col & lastRow
+    ws.Range(col & f & ":" & col & lastRow).FormulaR1C1 = formula
+End Sub
+
+Private Sub WriteBonds_T1_BDP_Efficient(ws As Worksheet, lastRow As Long)
+    If lastRow < DATA_ROW Then Exit Sub
+
+    Dim f As Long: f = DATA_ROW
+    Dim cfgFxFix As String: cfgFxFix = CfgR1C1(CFG_FX_FIX_SOURCE)
+    Dim cfgT1 As String:    cfgT1 = CfgR1C1(CFG_T1_DATE)
+
+    PutBondF ws, "T", f, lastRow, _
+        "=IF(RC1="""","""",IF(RC3=""EUR"",1,IFERROR(1/BDP(""EUR""&RC3&"" ""&" & cfgFxFix & "&"" Curncy"",""PX_LAST""),"""")))"
+
+    PutBondF ws, "V", f, lastRow, BBGFirstBDPFormulaR1C1("PX_LAST")
+    PutBondF ws, "W", f, lastRow, BBGFirstBDPFormulaR1C1("PX_DIRTY_MID")
+    PutBondF ws, "X", f, lastRow, BBGAccruedInterestFormulaR1C1(cfgT1)
+    PutBondF ws, "Y", f, lastRow, BBGFirstBDPFormulaR1C1("YLD_YTM_MID")
+    PutBondF ws, "Z", f, lastRow, BBGFirstBDPFormulaR1C1("DUR_ADJ_MID")
+
+    PutBondF ws, "AA", f, lastRow, _
+        BBGFirstBDPMultiFieldFormulaR1C1(Array("CONVEXITY", "OAS_CONVEXITY_MID", "OAS_CONV_MID", "CONVEXITY_OAS"), "0")
+
+    PutBondF ws, "AB", f, lastRow, BBGFirstBDPFormulaR1C1("Z_SPRD_MID")
+    PutBondF ws, "AC", f, lastRow, BBGFirstBDPFormulaR1C1("ASSET_SWAP_SPD_MID")
+
+    PutBondF ws, "AM", f, lastRow, _
+        "=IF(RC1="""","""",IF(AND(ISNUMBER(RC25),ISNUMBER(RC59)),(IF(ABS(RC25)>1,RC25/100,RC25)-RC59)*10000,""""))"
+
+    PutBondF ws, "AO", f, lastRow, _
+        "=IF(RC1="""","""",IF(AND(ISNUMBER(RC25),ISNUMBER(RC57)),(IF(ABS(RC25)>1,RC25/100,RC25)-RC57)*10000,""""))"
+
+    PutBondF ws, "AT", f, lastRow, _
+        BBGFirstBDPMultiFieldFormulaR1C1(Array("OAS_SPREAD_MID", "OAS_MID", "OAS_SPREAD"))
+
+    PutBondF ws, "AW", f, lastRow, _
+        "=IF(RC1="""","""",IF(AND(ISNUMBER(RC26),ISNUMBER(RC23)),RC26*RC23*0.0001,""""))"
+
+    PutBondF ws, "AY", f, lastRow, _
+        BBGFirstBDPMultiFieldFormulaR1C1(Array("OAS_DUR_MID", "OAS_DURATION_MID", "OAS_DUR", "OAS_DURATION", "DUR_ADJ_OAS_MID", "DUR_ADJ_OAS"))
+
+    PutBondF ws, "AX", f, lastRow, _
+        "=IF(RC1="""","""",IF(ISNUMBER(RC51),RC51,IF(ISNUMBER(RC26),RC26,"""")))"
+
+    PutBondF ws, "AZ", f, lastRow, _
+        BBGFirstBDPMultiFieldFormulaR1C1( _
+            Array("OAS_CONVEXITY_MID", "OAS_CONV_MID", "OAS_CONVEXITY", "OAS_CONV", "CONVEXITY_OAS"), _
+            "IF(ISNUMBER(RC27),RC27," & XlBlank() & ")" _
+        )
+
+    PutBondF ws, "BA", f, lastRow, BBGFirstBDPFormulaR1C1("PRICING_SOURCE")
+    PutBondF ws, "BB", f, lastRow, _
+        BBGFirstBDPMultiFieldFormulaR1C1(Array("LAST_PX_DT", "PRC_AS_OF_DT", "PX_DATE"))
+
+    PutBondF ws, "BC", f, lastRow, _
+        BBGFirstBDPMultiFieldFormulaR1C1(Array("BENCHMARK_SECURITY", "BENCHMARK", "REFERENCE_SECURITY"))
+
+    PutBondF ws, "BD", f, lastRow, _
+        BBGFirstBDPMultiFieldFormulaR1C1(Array("BENCHMARK_NAME", "REFERENCE_NAME"))
+
+    PutBondF ws, "BR", f, lastRow, _
+        "=SWITCH(RC3,""USD"",""SOFRRATE Index"",""EUR"",""ESTRON Index"",""GBP"",""SONIO/N Index"",""JPY"",""TONAR Index"",""CHF"",""SARON Index"",""CAD"",""CORRAINDX Index"",""AUD"",""AONIA Index"","""")"
+
+    PutBondF ws, "BS", f, lastRow, _
+        "=IF(RC1="""","""",IF(RC70="""","""",IFERROR(BDP(RC70,""PX_LAST""),"""")))"
+
+    PutBondF ws, "AQ", f, lastRow, _
+        "=IF(RC1="""","""",IF(NOT(ISNUMBER(RC39)),""Missing/invalid I-spread"",""OK""))"
+
+    PutBondF ws, "BU", f, lastRow, _
+        "=IF(RC1="""","""",IF(RC45<>""OK"",""Ticker issue"",IF(OR(NOT(ISNUMBER(RC22)),NOT(ISNUMBER(RC23)),NOT(ISNUMBER(RC25)),NOT(ISNUMBER(RC26))),""Missing market/risk data"",IF(OR(NOT(ISNUMBER(RC30)),NOT(ISNUMBER(RC31)),NOT(ISNUMBER(RC32))),""Missing T0 data"",""OK""))))"
+
+    ' All writes succeeded -> clear the tracker so a later, unrelated error is not
+    ' wrongly attributed to a bond column.
+    mLastFormulaTarget = ""
+End Sub
+
+
+' =============================================================================
+' EFFICIENT BONDS DERIVED WRITER
+'   Column map: Gov_T1=BE57 Gov_T0=BF58 Swap_T1=BG59 Swap_T0=BH60
+'               OIS_T1=P16 OIS_T0=Q17  YTM_T1=Y25 YTM_T0=AF32
+'               ISpread_T1=AM39 ISpread_T0=AN40
+' =============================================================================
+
+Private Sub WriteBondsCalculatedFormulas_Efficient(ws As Worksheet, lastRow As Long)
+    If lastRow < DATA_ROW Then Exit Sub
+    Dim f As Long: f = DATA_ROW
+    Dim cfgYearsBasis As String: cfgYearsBasis = CfgR1C1(CFG_YEARSLEFT_BASIS)
+    Dim cfgT1 As String:         cfgT1 = CfgR1C1(CFG_T1_DATE)
+
+    ' O = YearsLeft
+    ws.Range("O" & f & ":O" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",IF(" & cfgYearsBasis & "=""TODAY"",MAX(0,YEARFRAC(TODAY(),RC6,1)),MAX(0,YEARFRAC(" & cfgT1 & ",RC6,1))))"
+
+    ' P/Q = OIS T1/T0
+    ' P = OIS_T1
+    ' Q = OIS_T0
+    ws.Range("P" & f & ":P" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",IFERROR(InterpOIS(RC3,RC15,TRUE),""""))"
+
+    ws.Range("Q" & f & ":Q" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",IFERROR(InterpOIS(RC3,RC15,FALSE),""""))"
+
+    ' R/S = discount factors
+    ws.Range("R" & f & ":R" & lastRow).FormulaR1C1 = "=IFERROR(EXP(-RC16*RC15),"""")"
+    ws.Range("S" & f & ":S" & lastRow).FormulaR1C1 = "=IFERROR(EXP(-RC17*RC15),"""")"
+
+    ' AV = DeltaOAS (OAS_T1=46, OAS_T0=47)
+    ws.Range("AV" & f & ":AV" & lastRow).FormulaR1C1 = "=IF(AND(ISNUMBER(RC46),ISNUMBER(RC47)),RC46-RC47,"""")"
+
+    ' BE/BF = Gov T1/T0 ; BG/BH = Swap T1/T0
+    ws.Range("BE" & f & ":BE" & lastRow).FormulaR1C1 = "=IF(RC1="""","""",InterpGov(RC3,RC15,TRUE))"
+    ws.Range("BF" & f & ":BF" & lastRow).FormulaR1C1 = "=IF(RC1="""","""",InterpGov(RC3,RC15,FALSE))"
+    ws.Range("BG" & f & ":BG" & lastRow).FormulaR1C1 = "=IF(RC1="""","""",InterpSwap(RC3,RC15,TRUE))"
+    ws.Range("BH" & f & ":BH" & lastRow).FormulaR1C1 = "=IF(RC1="""","""",InterpSwap(RC3,RC15,FALSE))"
+
+    ' BI/BJ/BK = g = Gov - OIS  (Gov_T1=57 OIS_T1=16 ; Gov_T0=58 OIS_T0=17)
+    ws.Range("BI" & f & ":BI" & lastRow).FormulaR1C1 = "=IF(AND(ISNUMBER(RC57),ISNUMBER(RC16)),RC57-RC16,"""")"
+    ws.Range("BJ" & f & ":BJ" & lastRow).FormulaR1C1 = "=IF(AND(ISNUMBER(RC58),ISNUMBER(RC17)),RC58-RC17,"""")"
+    ws.Range("BK" & f & ":BK" & lastRow).FormulaR1C1 = "=IF(AND(ISNUMBER(RC61),ISNUMBER(RC62)),(RC61-RC62)*10000,"""")"
+
+    ' BL/BM/BN = q = Swap - Gov  (Swap_T1=59 Gov_T1=57 ; Swap_T0=60 Gov_T0=58)
+    ws.Range("BL" & f & ":BL" & lastRow).FormulaR1C1 = "=IF(AND(ISNUMBER(RC59),ISNUMBER(RC57)),RC59-RC57,"""")"
+    ws.Range("BM" & f & ":BM" & lastRow).FormulaR1C1 = "=IF(AND(ISNUMBER(RC60),ISNUMBER(RC58)),RC60-RC58,"""")"
+    ws.Range("BN" & f & ":BN" & lastRow).FormulaR1C1 = "=IF(AND(ISNUMBER(RC64),ISNUMBER(RC65)),(RC64-RC65)*10000,"""")"
+
+    ' BO = Delta_i (ISpread_T1=39 ISpread_T0=40) - blank if either missing (no fake PnL)
+    ws.Range("BO" & f & ":BO" & lastRow).FormulaR1C1 = "=IF(AND(ISNUMBER(RC39),ISNUMBER(RC40)),RC39-RC40,"""")"
+
+    ' BP = Delta_y (YTM_T1=25 YTM_T0=32)
+    ws.Range("BP" & f & ":BP" & lastRow).FormulaR1C1 = _
+        "=IF(AND(ISNUMBER(RC25),ISNUMBER(RC32)),IF(MAX(ABS(RC25),ABS(RC32))<1,(RC25-RC32)*10000,(RC25-RC32)*100),"""")"
+
+    ' AI = DV01_EUR (PositionSide=69 Notional=7 SpreadDur=49 ModDur=26 DirtyPx=23 FX=20)
+    ws.Range("AI" & f & ":AI" & lastRow).FormulaR1C1 = _
+        "=IFERROR(IF(ISNUMBER(RC49),RC69*RC7*RC49/100*RC20,RC69*ABS(RC7)*RC26*0.0001*RC23/100*RC20),0)"
+
+    ' AJ/AK = market values T1/T0 (DirtyPx_T1=23 FX_T1=20 ; DirtyPx_T0=31 FX_T0=21)
+    ws.Range("AJ" & f & ":AJ" & lastRow).FormulaR1C1 = "=IFERROR(RC7*RC23/100*RC20,0)"
+    ws.Range("AK" & f & ":AK" & lastRow).FormulaR1C1 = "=IF(OR(NOT(ISNUMBER(RC31)),NOT(ISNUMBER(RC21))),"""",RC7*RC31/100*RC21)"
+End Sub
+
+
+' =============================================================================
+' EFFICIENT FUTURES WRITERS
+'   - Generic ticker via FutMap lookup (col V=22), not blind code&"1 Comdty".
+'   - CTD resolved from OPICS CTD_ISIN (col G=7) into AA=27, used for CTD px/DV01.
+'   - All config refs use CfgR1C1 (fixes DaysToDeliv #NAME? and futures px pull).
+'   Column map: ContCode=A1 CTD_ISIN=G7 CTD_CF=H8 DelivDate=F6 Contracts=D4
+'               FaceValue=E5 FX=M13 FutPx_T1=N14 FutPx_T0=Q17 CTDtkr=AA27
+' =============================================================================
+
+Private Sub WriteFutures_T1_BDP_Efficient(ws As Worksheet, lastRow As Long)
+    If lastRow < DATA_ROW Then Exit Sub
+    Dim f As Long: f = DATA_ROW
+    Dim cfgFxFix As String:   cfgFxFix = CfgR1C1(CFG_FX_FIX_SOURCE)
+    Dim cfgFutPx As String:   cfgFutPx = CfgR1C1(CFG_FUT_PRICE_FIELD)
+
+    ' V = generic future ticker from FutMap (returns "" -> downstream flagged)
+    ws.Range("V" & f & ":V" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",IFERROR(VLOOKUP(RC1,FutMapTable,2,FALSE),""""))"
+
+    ' M = FX_T1  (CfgR1C1, not literal sheet concat)
+    ws.Range("M" & f & ":M" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",IF(RC3=""EUR"",1,IFERROR(1/BDP(""EUR""&RC3&"" ""&" & cfgFxFix & "&"" Curncy"",""PX_LAST""),"""")))"
+
+    ' N = FutPx_T1 (config field, PX_LAST fallback)
+    ws.Range("N" & f & ":N" & lastRow).FormulaR1C1 = _
+        "=IF(RC22="""","""",IFERROR(BDP(RC22," & cfgFutPx & "),IFERROR(BDP(RC22,""PX_LAST""),"""")))"
+
+    ws.Range("Y" & f & ":Y" & lastRow).FormulaR1C1 = "=IF(RC22="""","""",IFERROR(BDP(RC22,""FUT_VAL_PT""),""""))"
+    ws.Range("Z" & f & ":Z" & lastRow).FormulaR1C1 = "=IF(RC22="""","""",IFERROR(BDP(RC22,""FUT_CONT_SIZE""),""""))"
+
+    ' AA = CTD ticker resolved from OPICS CTD_ISIN (col 7), NOT Bloomberg FUT_CTD_BOND
+    ws.Range("AA" & f & ":AA" & lastRow).FormulaR1C1 = _
+        "=IF(RC7="""",""""," & _
+        "IFERROR(BDP(""/isin/""&RC7,""PARSEKYABLE_DES"")," & _
+        "IFERROR(BDP(RC7&"" Govt"",""PARSEKYABLE_DES"")," & _
+        "IFERROR(BDP(RC7&"" Corp"",""PARSEKYABLE_DES""),""""))))"
+
+    ' AB = CTD unit DV01 from CTD ticker (AA=27)
+    ws.Range("AB" & f & ":AB" & lastRow).FormulaR1C1 = _
+        "=IF(RC27="""",""""," & _
+        "IFERROR(BDP(RC27,""DV01"")," & _
+        "IF(AND(ISNUMBER(BDP(RC27,""DUR_ADJ_MID"")),ISNUMBER(RC15)),BDP(RC27,""DUR_ADJ_MID"")*RC15*0.0001,"""")))"
+
+    ' AC = conversion factor: use OPICS CTD_CF (col 8); Bloomberg CONV_FACTOR fallback
+    ws.Range("AC" & f & ":AC" & lastRow).FormulaR1C1 = _
+        "=IF(ISNUMBER(RC8),RC8,IF(RC22="""","""",IFERROR(BDP(RC22,""CONV_FACTOR""),"""")))"
+
+    ' O = CTD dirty price T1 (from CTD ticker AA=27)
+    ws.Range("O" & f & ":O" & lastRow).FormulaR1C1 = "=IF(RC27="""","""",IFERROR(BDP(RC27,""PX_DIRTY_MID""),""""))"
+    ' P = CTD ticker mirror for T0 BDH targeting
+    ws.Range("P" & f & ":P" & lastRow).FormulaR1C1 = "=IF(RC27="""","""",RC27)"
+
+    ' Basis diagnostics (best-effort)
+    ws.Range("AF" & f & ":AF" & lastRow).FormulaR1C1 = "=IF(RC22="""","""",IFERROR(BDP(RC22,""IMPLIED_REPO_RATE""),""""))"
+    ws.Range("AG" & f & ":AG" & lastRow).FormulaR1C1 = "=IF(RC22="""","""",IFERROR(BDP(RC22,""NET_BASIS""),""""))"
+    ws.Range("AH" & f & ":AH" & lastRow).FormulaR1C1 = "=IF(RC22="""","""",IFERROR(BDP(RC22,""GROSS_BASIS""),""""))"
+
+    ' Status
+    ws.Range("W" & f & ":W" & lastRow).FormulaR1C1 = "=IF(RC14="""",""Missing T1 future price"",""OK"")"
+    ws.Range("AI" & f & ":AI" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""","""",IF(RC22="""",""Unmapped contract (FutMap)"",IF(RC14="""",""Missing T1 future price"",""OK"")))"
+End Sub
+
+' Futures T0 status only.  FutPx_T0 (col Q) is pulled on the hidden staging sheet
+' (RefreshFreezeFutureT0) and copied back as a static value, so no BDH array formula
+' is written into the live Futures rows anymore.
+Private Sub WriteFutures_T0_Status(ws As Worksheet, lastRow As Long)
+    If lastRow < DATA_ROW Then Exit Sub
+
+    ws.Range("X" & DATA_ROW & ":X" & lastRow).FormulaR1C1 = _
+        "=IF(RC17="""",""Missing T0 future price"",""OK"")"
+End Sub
+
+Private Sub WriteFuturesCalculatedFormulas_Efficient(ws As Worksheet, lastRow As Long)
+    If lastRow < DATA_ROW Then Exit Sub
+    Dim f As Long: f = DATA_ROW
+    Dim cfgT1 As String: cfgT1 = CfgR1C1(CFG_T1_DATE)
+
+    ' L = DaysToDeliv  (CfgR1C1 fixes the #NAME? error.  DelivDate=6)
+    ws.Range("L" & f & ":L" & lastRow).FormulaR1C1 = "=IF(RC1="""","""",MAX(0,RC6-" & cfgT1 & "))"
+
+    ' R = implied repo (best-effort) ; S = gross basis (best-effort)
+    ws.Range("R" & f & ":R" & lastRow).FormulaR1C1 = _
+        "=IF(ISNUMBER(RC32),RC32,IFERROR(((RC15-RC14*RC8)/RC15)*(365/MAX(1,RC12)),""""))"
+    ws.Range("S" & f & ":S" & lastRow).FormulaR1C1 = _
+        "=IF(ISNUMBER(RC34),RC34,IFERROR(RC15-RC14*RC8,""""))"
+
+    ' AD = Hedge unit DV01 = CTD_DV01 / CF * px adj  (CTD_DV01=28 CF=29 FutPx=25)
+    ws.Range("AD" & f & ":AD" & lastRow).FormulaR1C1 = _
+        "=IF(AND(ISNUMBER(RC28),ISNUMBER(RC29),ISNUMBER(RC25),RC29<>0),RC28/RC29*RC25/100,"""")"
+
+    ' AE = Hedge_DV01_EUR = Contracts * unitDV01 * FX  (Contracts=4 unitDV01=30 FX=13)
+    ws.Range("AE" & f & ":AE" & lastRow).FormulaR1C1 = _
+        "=IF(AND(ISNUMBER(RC4),ISNUMBER(RC30),ISNUMBER(RC13)),RC4*RC30*RC13,"""")"
+
+    ' T = notional value (best-effort)
+    ws.Range("T" & f & ":T" & lastRow).FormulaR1C1 = _
+        "=IF(ISNUMBER(RC31),RC31,IFERROR(RC4*RC5*RC16/MAX(0.000001,RC8)*RC13,0))"
+
+    ' U = Futures P&L  REQUIRES both T1(14) and T0(17) future prices; else "" (no fake PnL)
+    ws.Range("U" & f & ":U" & lastRow).FormulaR1C1 = _
+        "=IF(AND(ISNUMBER(RC4),ISNUMBER(RC25),ISNUMBER(RC14),ISNUMBER(RC17),ISNUMBER(RC13))," & _
+        "RC4*RC25*(RC14-RC17)*RC13,"""")"
+End Sub
+
+
+' =============================================================================
+' BONDS T0 WRITER
+'   Missing T0 is preserved as ""  (NEVER coerced to 0) so spread deltas blank
+'   out instead of producing fake spread PnL.  Spread T0 fields derive from
+'   curves only when curve nodes exist, else "".
+'   Targets: CleanPx_T0=AD30 DirtyPx_T0=AE31 YTM_T0=AF32 ZSprd_T0=AG33
+'            ASW_T0=AH34 ISpread_T0=AN40 GSpread_T0=AP42 OAS_T0=AU47
+'            FX_T0=U21 FundRate_T0=BT72   (ticker AR=44)
+' =============================================================================
+
+' Bonds T0 DERIVED spreads only.  These reference model cells (YTM_T0, Gov_T0,
+' Swap_T0), never Bloomberg, so they are written AFTER the staged T0 values have been
+' copied into the model.  The market T0 pulls (U / AD:AH / AU / BT) are produced on the
+' hidden staging sheet (RefreshFreezeBondT0_Chunked) and copied back as static values.
+Private Sub WriteBonds_T0_DerivedSpreads(ws As Worksheet, lastRow As Long)
+    If lastRow < DATA_ROW Then Exit Sub
+
+    ' AN = ISpread_T0  (DERIVED ONLY from history: i = YTM_T0 - Swap_T0.  YTM_T0=32 Swap_T0=60)
+    ws.Range("AN" & DATA_ROW & ":AN" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""",""""," & _
+        "IF(AND(ISNUMBER(RC32),ISNUMBER(RC60)),(IF(ABS(RC32)>1,RC32/100,RC32)-RC60)*10000,""""))"
+
+    ' AP = GSpread_T0  (DERIVED ONLY: g = YTM_T0 - Gov_T0.  YTM_T0=32 Gov_T0=58)
+    ws.Range("AP" & DATA_ROW & ":AP" & lastRow).FormulaR1C1 = _
+        "=IF(RC1="""",""""," & _
+        "IF(AND(ISNUMBER(RC32),ISNUMBER(RC58)),(IF(ABS(RC32)>1,RC32/100,RC32)-RC58)*10000,""""))"
+End Sub
+
+
+' =============================================================================
+' T0 BDH STAGING SHEET
+'
+'   Why:  BDH() is an array (Date|Value) function.  Writing ~4,800 of them straight
+'   into the live Bonds/Futures rows (interleaved with calc columns such as the AI
+'   DV01 that sits between AH and AJ) is fragile and re-hits Bloomberg on every
+'   recalc.  Instead we stage all single-point T0 pulls on ONE hidden support sheet,
+'   refresh once, then copy only the resolved values back into the model T0 columns.
+'
+'   The sheet is created once and REUSED on every run (looked up by name first; only
+'   added if missing), so re-running Step 4 never spawns "BBG_T0_Staging (2)" etc.
+'
+'   Layout: staging rows align 1:1 to model rows (row 5..lastRow).  Each staging cell
+'   reuses BDHLastPointExprR1C1 (single value, non-spilling) with the security cell
+'   sheet-qualified back to the model via cross-sheet R1C1 ('Bonds'!RC44 etc.).
+'
+'   Staging col -> model target:
+'     B -> Bonds U  (FX_T0)            C -> Bonds AD (CleanPx_T0, PX_LAST)
+'     D -> Bonds AE (DirtyPx_T0)       E -> Bonds AF (YTM_T0)
+'     F -> Bonds AG (ZSprd_T0)         G -> Bonds AH (ASW_T0)
+'     H -> Bonds AU (OAS_T0)           I -> Bonds BT (FundRate_T0)
+'     K -> Futures Q (FutPx_T0)
+' =============================================================================
+
+' Create-once / reuse the hidden staging sheet.  Returned visible (so the Bloomberg
+' add-in calculates it); caller re-hides it (xlSheetVeryHidden) when done.
+Private Function EnsureT0StagingSheet() As Worksheet
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets(SH_T0_STG)
+    On Error GoTo 0
+
+    If ws Is Nothing Then
+        Set ws = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        ws.Name = SH_T0_STG
+    End If
+
+    ws.Visible = xlSheetVisible
+    ws.Cells.ClearContents
+    ws.Range("A1").Value = "BBG_T0_Staging (auto-generated; do not edit)"
+
+    Set EnsureT0StagingSheet = ws
+End Function
+
+' Builds a single-point staging formula:  =IF(secRef="","",<last BDH value>)
+'   secRef    : sheet-qualified R1C1 security cell, e.g. "'Bonds'!RC44"
+'   fieldExpr : Excel expression for the field (a quoted literal or a config cell ref)
+Private Function BDHStgPointR1C1(ByVal secRef As String, ByVal fieldExpr As String, ByVal cfgT0 As String) As String
+    BDHStgPointR1C1 = _
+        "=IF(" & secRef & "="""",""""," & _
+        BDHLastPointExprR1C1( _
+            secRef, _
+            fieldExpr, _
+            "INT(" & cfgT0 & ")-3", _
+            "INT(" & cfgT0 & ")" _
+        ) & ")"
+End Function
+
+' =============================================================================
+' MULTI-FIELD, CHUNKED BOND T0 STAGING  (memory fix)
+'
+'   The old approach wrote one single-field BDH per (bond x field) ~= 4,800 live
+'   array formulas -> "Out of memory".  This instead uses ONE multi-field BDH per
+'   bond (6 fields in a single call) and processes bonds in batches, freezing each
+'   batch to static values and clearing the formulas before the next batch, so the
+'   peak number of live BDH formulas is bounded.
+'
+'   Staging layout (rows aligned to model rows):
+'     B = multi-field anchor.  BDH returns Date|F1..F6; LET+INDEX(_b,ROWS(_b),0)
+'         emits the LAST row, which SPILLS across B:H:
+'           B=Date(skip) C=PX_LAST D=PX_DIRTY_MID E=YLD_YTM_MID F=Z_SPRD_MID
+'           G=ASSET_SWAP_SPD_MID H=OAS_SPREAD_MID
+'     J = FX_T0 (single field)        K = FundRate_T0 (single field)
+'   Copy map: C->AD D->AE E->AF F->AG G->AH H->AU ; J->U ; K->BT
+'
+'   Only the SAFE BDH options are used (Days=W, Fill=P, Sort=A) - never Dts/Cols/
+'   UseDPDF, which caused the original "Invalid override field id".  Sort=A makes the
+'   last row the latest date (the T0 value, carried by Fill=P).
+' =============================================================================
+
+' Writes the multi-field bond T0 staging for one row window [firstRow, lastRow].
+Private Sub WriteBondT0StagingChunk(ByVal wsStg As Worksheet, ByVal firstRow As Long, ByVal lastRow As Long)
+    If lastRow < firstRow Then Exit Sub
+
+    Dim q As String:        q = Chr$(34)
+    Dim cfgFxFix As String: cfgFxFix = CfgR1C1(CFG_FX_FIX_SOURCE)
+    Dim cfgT0 As String:    cfgT0 = CfgR1C1(CFG_T0_DATE)
+
+    Dim fieldList As String
+    fieldList = BBG_PX_LAST & "," & BBG_PX_DIRTY_MID & "," & BBG_YLD_YTM_MID & "," & _
+                BBG_ZSPREAD & "," & BBG_ASW & "," & BBG_OAS
+
+    ' B = multi-field anchor (spills B:H; first spilled column is the date, skipped).
+    Dim anchor As String
+    anchor = "=IF('" & SH_BONDS & "'!RC44=" & q & q & "," & q & q & "," & _
+             "IFERROR(LET(_b,BDH('" & SH_BONDS & "'!RC44," & _
+             q & fieldList & q & "," & _
+             "TEXT(INT(" & cfgT0 & ")-7," & q & "yyyymmdd" & q & ")," & _
+             "TEXT(INT(" & cfgT0 & ")," & q & "yyyymmdd" & q & ")," & _
+             q & "Days=W" & q & "," & q & "Fill=P" & q & "," & q & "Sort=A" & q & _
+             "),INDEX(_b,ROWS(_b),0))," & q & q & "))"
+    wsStg.Range("B" & firstRow & ":B" & lastRow).FormulaR1C1 = anchor
+
+    ' J = FX_T0  (1 for EUR; else 1/BDH(EUR{ccy}{fix} Curncy, PX_LAST); blank on miss)
+    wsStg.Range("J" & firstRow & ":J" & lastRow).FormulaR1C1 = _
+        "=IF('" & SH_BONDS & "'!RC1=" & q & q & "," & q & q & ",IF('" & SH_BONDS & "'!RC3=" & q & "EUR" & q & ",1,IFERROR(1/" & _
+        BDHLastPointExprR1C1( _
+            q & "EUR" & q & "&'" & SH_BONDS & "'!RC3&" & q & " " & q & "&" & cfgFxFix & "&" & q & " Curncy" & q, _
+            q & "PX_LAST" & q, _
+            "INT(" & cfgT0 & ")-7", _
+            "INT(" & cfgT0 & ")" _
+        ) & "," & q & q & ")))"
+
+    ' K = FundRate_T0  (PX_LAST of funding ticker Bonds!BR=col70)
+    wsStg.Range("K" & firstRow & ":K" & lastRow).FormulaR1C1 = _
+        BDHStgPointR1C1("'" & SH_BONDS & "'!RC70", q & BBG_PX_LAST & q, cfgT0)
+End Sub
+
+' Copies one resolved bond batch [firstRow, lastRow] into the model T0 columns as
+' static values (blanks stay "" -> missing-as-blank preserved).
+Private Sub CopyBondT0ChunkToModel(ByVal wsStg As Worksheet, ByVal wsBnd As Worksheet, _
+                                   ByVal firstRow As Long, ByVal lastRow As Long)
+    If lastRow < firstRow Then Exit Sub
+    wsBnd.Range("AD" & firstRow & ":AD" & lastRow).Value = wsStg.Range("C" & firstRow & ":C" & lastRow).Value
+    wsBnd.Range("AE" & firstRow & ":AE" & lastRow).Value = wsStg.Range("D" & firstRow & ":D" & lastRow).Value
+    wsBnd.Range("AF" & firstRow & ":AF" & lastRow).Value = wsStg.Range("E" & firstRow & ":E" & lastRow).Value
+    wsBnd.Range("AG" & firstRow & ":AG" & lastRow).Value = wsStg.Range("F" & firstRow & ":F" & lastRow).Value
+    wsBnd.Range("AH" & firstRow & ":AH" & lastRow).Value = wsStg.Range("G" & firstRow & ":G" & lastRow).Value
+    wsBnd.Range("AU" & firstRow & ":AU" & lastRow).Value = wsStg.Range("H" & firstRow & ":H" & lastRow).Value
+    wsBnd.Range("U" & firstRow & ":U" & lastRow).Value = wsStg.Range("J" & firstRow & ":J" & lastRow).Value
+    wsBnd.Range("BT" & firstRow & ":BT" & lastRow).Value = wsStg.Range("K" & firstRow & ":K" & lastRow).Value
+End Sub
+
+' Chunk driver: per batch -> write multi-field formulas, wait, copy values to model,
+' clear the batch's staging cells (releasing the array caches), then next batch.
+Private Sub RefreshFreezeBondT0_Chunked(ByVal wsCfg As Worksheet, ByVal wsStg As Worksheet, _
+                                        ByVal wsBnd As Worksheet, ByVal lastBondRow As Long, _
+                                        ByVal batch As Long)
+    If lastBondRow < DATA_ROW Then Exit Sub
+    If batch < 1 Then batch = 1
+
+    Dim startRow As Long, endRow As Long
+    startRow = DATA_ROW
+    Do While startRow <= lastBondRow
+        endRow = startRow + batch - 1
+        If endRow > lastBondRow Then endRow = lastBondRow
+
+        WriteBondT0StagingChunk wsStg, startRow, endRow
+
+        Dim rngAnchor As Range, rngFxFund As Range
+        Set rngAnchor = wsStg.Range("B" & startRow & ":H" & endRow)   ' anchor + spill
+        Set rngFxFund = wsStg.Range("J" & startRow & ":K" & endRow)   ' FX + funding
+
+        RefreshBloombergAndWaitMany wsCfg, rngAnchor, rngFxFund
+
+        If Not WaitForBloombergReadyMany(wsCfg, rngAnchor, rngFxFund) Then
+            wsStg.Visible = xlSheetVisible
+            Err.Raise 9511, , _
+                "Bloomberg bond T0 batch (rows " & startRow & "-" & endRow & ") did not finish cleanly. " & _
+                "Inspect sheet '" & SH_T0_STG & "'. Stopped before freezing to avoid storing #N/A."
+        End If
+
+        wsStg.Calculate
+        CopyBondT0ChunkToModel wsStg, wsBnd, startRow, endRow
+
+        ' Release this batch's array caches before loading the next.
+        wsStg.Range("B" & startRow & ":K" & endRow).ClearContents
+
+        startRow = endRow + 1
+    Loop
+End Sub
+
+' Futures T0 (small: ~50) - single-field BDH in staging col M, one pass, then freeze.
+Private Sub RefreshFreezeFutureT0(ByVal wsCfg As Worksheet, ByVal wsStg As Worksheet, _
+                                  ByVal wsFut As Worksheet, ByVal lastFutRow As Long)
+    If lastFutRow < DATA_ROW Then Exit Sub
+
+    Dim cfgFutPx As String: cfgFutPx = CfgR1C1(CFG_FUT_PRICE_FIELD)
+    Dim cfgT0 As String:    cfgT0 = CfgR1C1(CFG_T0_DATE)
+
+    ' M = FutPx_T0  (generic future ticker in Futures!V=col22; config price field)
+    wsStg.Range("M" & DATA_ROW & ":M" & lastFutRow).FormulaR1C1 = _
+        BDHStgPointR1C1("'" & SH_FUTURES & "'!RC22", cfgFutPx, cfgT0)
+
+    Dim rngM As Range
+    Set rngM = wsStg.Range("M" & DATA_ROW & ":M" & lastFutRow)
+
+    RefreshBloombergAndWaitMany wsCfg, rngM
+
+    If Not WaitForBloombergReadyMany(wsCfg, rngM) Then
+        wsStg.Visible = xlSheetVisible
+        Err.Raise 9512, , _
+            "Bloomberg futures T0 requests did not finish cleanly. Inspect sheet '" & SH_T0_STG & "'."
+    End If
+
+    wsStg.Calculate
+    wsFut.Range("Q" & DATA_ROW & ":Q" & lastFutRow).Value = wsStg.Range("M" & DATA_ROW & ":M" & lastFutRow).Value
+    wsStg.Range("M" & DATA_ROW & ":M" & lastFutRow).ClearContents
+End Sub
+
+
+' =============================================================================
+' SWAPS FORMULAS  (unchanged economics; PnL only when OPICS supplies economics)
+' =============================================================================
+
+Private Sub WriteSwapsCalculatedFormulas(ws As Worksheet)
+    Dim r As Long
+    Dim cfgT1 As String:    cfgT1 = CfgR1C1(CFG_T1_DATE)
+    Dim cfgFxFix As String: cfgFxFix = CfgR1C1(CFG_FX_FIX_SOURCE)
+
+    For r = DATA_ROW To DATA_ROW + N_SWAP_ROWS - 1
+        If CleanText(ws.Cells(r, "A").Value) <> "" Then
+            ws.Cells(r, "M").Formula = "=IF($A" & r & "="""","""",MAX(0,YEARFRAC('" & SH_CONFIG & "'!" & CFG_T1_DATE & ",$H" & r & ",1)))"
+            ws.Cells(r, "N").Formula = "=IF($B" & r & "="""","""",InterpOIS($B" & r & ",$M" & r & ",TRUE))"
+            ws.Cells(r, "O").Formula = "=IF($B" & r & "="""","""",InterpOIS($B" & r & ",$M" & r & ",FALSE))"
+            ws.Cells(r, "P").Formula = "=IFERROR(EXP(-N" & r & "*M" & r & "),"""")"
+            ws.Cells(r, "Q").Formula = "=IFERROR(EXP(-O" & r & "*M" & r & "),"""")"
+            ws.Cells(r, "R").Formula = "=IFERROR((1-P" & r & ")/MAX(0.000001,N" & r & "),"""")"
+            ws.Cells(r, "S").Formula = "=IFERROR((1-Q" & r & ")/MAX(0.000001,O" & r & "),"""")"
+            ws.Cells(r, "T").Formula = "=IF($A" & r & "="""","""",IF($B" & r & "="""","""",IF($B" & r & "=""EUR"",1,IFERROR(1/BDP(""EUR""&$B" & r & "&"" ""&'" & SH_CONFIG & "'!" & CFG_FX_FIX_SOURCE & "&"" Curncy"",""PX_LAST""),""""))))"
+            ws.Cells(r, "U").Formula = "=IF(OR($B" & r & "="""",$C" & r & "="""",$D" & r & "=""""),"""",IFERROR(IF($I" & r & "=""Y"",-1,1)*$C" & r & "*($D" & r & "+$F" & r & "-$N" & r & ")*$R" & r & "*$T" & r & ",""""))"
+            ws.Cells(r, "V").Formula = "=IF(OR($B" & r & "="""",$C" & r & "="""",$D" & r & "=""""),"""",IFERROR(IF($I" & r & "=""Y"",-1,1)*$C" & r & "*($D" & r & "+$F" & r & "-$O" & r & ")*$S" & r & "*$T" & r & ",""""))"
+            ws.Cells(r, "W").Formula = "=IF(OR($B" & r & "="""",$C" & r & "=""""),"""",IFERROR(ABS($C" & r & ")*0.0001*$R" & r & "*$T" & r & ",""""))"
+            ws.Cells(r, "X").Formula = "=IF(OR(NOT(ISNUMBER(U" & r & ")),NOT(ISNUMBER(V" & r & "))),"""",U" & r & "-V" & r & ")"
+            ws.Cells(r, "Y").Formula = "=IF(OR($B" & r & "="""",$C" & r & "="""",$D" & r & "=""""),""Missing economics"",""OK"")"
+            ws.Cells(r, "Z").Formula = "=IF(Y" & r & "=""OK"",""MODEL"",""NONE"")"
+            ws.Cells(r, "AC").Formula = "=IF(AND(ISNUMBER(AA" & r & "),ISNUMBER(AB" & r & ")),AA" & r & "-AB" & r & ","""")"
+            ws.Cells(r, "AF").Formula = "=Y" & r
+        End If
+    Next r
+End Sub
+
+
+' =============================================================================
+' PNL ATTRIBUTION
+'   Full header + row rebuild removes any stale #REF! formulas in the sheet.
+'   Run RebuildPNLOnly for a fast repair without touching Bloomberg.
+' =============================================================================
+
+Public Sub RebuildPNLOnly()
+    Dim wsPnl As Worksheet: Set wsPnl = ThisWorkbook.Worksheets(SH_PNL)
+    Dim wsBnd As Worksheet: Set wsBnd = ThisWorkbook.Worksheets(SH_BONDS)
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    SetupPNLAttributionHeaders wsPnl
+    WritePNLAttributionRows wsPnl, wsBnd
+    Application.CalculateFull
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    MsgBox "PNL_Attribution rebuilt (stale #REF! cleared).", vbInformation
+End Sub
+
+
+Private Sub SetupPNLAttributionHeaders(ws As Worksheet)
+    ' Clear the whole data + header block first to kill any #REF! remnants.
+    On Error Resume Next
+    ws.Range("A3:CA3").UnMerge
+    On Error GoTo 0
+    ws.Range("A3:CA" & CStr(DATA_ROW + N_BOND_ROWS - 1)).ClearContents
+
+    ws.Range("A1").Value = "PNL Attribution"
+
+    Dim headers As Variant
+    headers = Array( _
+        "ISIN", "BBG_Ticker", "Name", "CCY", "Portfolio", "AcctgCat", "Notional", "PositionSide", _
+        "Days", "YearFrac", "DirtyMV_T1_EUR", "DirtyMV_T0_EUR", "PnL_Actual_Proxy_EUR", _
+        "YTM_T0 (%)", "YTM_T1 (%)", "DeltaY_bp", _
+        "OIS_T0 (%)", "OIS_T1 (%)", "Delta_r_bp", _
+        "Gov_T0 (%)", "Gov_T1 (%)", "DeltaGov_bp", _
+        "g_T0 (%)", "g_T1 (%)", "Delta_g_bp", _
+        "Swap_T0 (%)", "Swap_T1 (%)", "DeltaSwap_bp", _
+        "q_T0 (%)", "q_T1 (%)", "Delta_q_bp", _
+        "ISpread_T0 bp", "ISpread_T1 bp", "Delta_i_bp", _
+        "ZSprd_T0 bp", "ZSprd_T1 bp", "DeltaZ_bp", _
+        "GSpread_T0 bp", "GSpread_T1 bp", "DeltaG_bp", _
+        "ASW_T0 bp", "ASW_T1 bp", "DeltaASW_bp", _
+        "OAS_T0 bp", "OAS_T1 bp", "DeltaOAS_bp", _
+        "DV01_EUR", "ModDur", "Convexity", "SpreadDuration", _
+        "PnL_Duration_Total", "PnL_OIS", "PnL_GovBasis", "PnL_SwapGovBasis", "PnL_Credit_Ispread", "PnL_Convexity", _
+        "Carry_Coupon", "Carry_RollToPar", "Carry_Funding", "Carry_Total", _
+        "PnL_ZSpread", "PnL_GSpread", "PnL_ASW", "PnL_OAS", "SpreadPnL_Used", _
+        "PnL_FX", "PnL_Futures", "PnL_Swap", "Total_Hedge", "Basis_PnL", _
+        "Total_Explained", "Official_PnL", "Residual", "Residual_%", _
+        "Hedge_DV01", "Residual_DV01", "Hedge_Ratio", "Hedge_Efficiency", "Attribution_Status" _
+    )
+
+    Dim i As Long
+    For i = LBound(headers) To UBound(headers)
+        ws.Cells(4, i + 1).Value = headers(i)
+    Next i
+
+    ws.Range("A3:CA4").Font.Bold = True
+    ws.Range("A3:CA4").HorizontalAlignment = xlCenter
+    ws.Range("A3:CA4").Interior.Color = RGB(47, 117, 181)
+    ws.Range("A3:CA4").Font.Color = vbWhite
+End Sub
+
+
+Private Sub WritePNLAttributionRows(wsPnl As Worksheet, wsBnd As Worksheet)
+    wsPnl.Range("A" & DATA_ROW & ":CA" & CStr(DATA_ROW + N_BOND_ROWS - 1)).ClearContents
+
+    Dim lastBondRow As Long: lastBondRow = LastBondDataRow(wsBnd)
+    Dim bondRow As Long
+    Dim pnlRow As Long: pnlRow = DATA_ROW
+
+    For bondRow = DATA_ROW To lastBondRow
+        If CleanText(wsBnd.Cells(bondRow, 1).Value) <> "" Then
+            WritePNLRow wsPnl, bondRow, pnlRow
+            pnlRow = pnlRow + 1
+        End If
+    Next bondRow
+End Sub
+
+
+Private Sub WritePNLRow(ws As Worksheet, bondRow As Long, pnlRow As Long)
+    Dim B As String: B = "'" & SH_BONDS & "'!"
+    Dim c As String: c = "'" & SH_CONFIG & "'!"
+    Dim Fu As String: Fu = "'" & SH_FUTURES & "'!"
+    Dim Sw As String: Sw = "'" & SH_SWAPS & "'!"
+    Dim p As String:  p = CStr(pnlRow)
+    Dim b2 As String: b2 = CStr(bondRow)
+
+    ws.Range("A" & p).Formula = "=" & B & "A" & b2
+    ws.Range("B" & p).Formula = "=" & B & "AR" & b2
+    ws.Range("C" & p).Formula = "=" & B & "B" & b2
+    ws.Range("D" & p).Formula = "=" & B & "C" & b2
+    ws.Range("E" & p).Formula = "=" & B & "J" & b2
+    ws.Range("F" & p).Formula = "=" & B & "K" & b2
+    ws.Range("G" & p).Formula = "=" & B & "G" & b2
+    ws.Range("H" & p).Formula = "=" & B & "BQ" & b2
+    ws.Range("I" & p).Formula = "=" & c & CFG_T1_DATE & "-" & c & CFG_T0_DATE
+    ws.Range("J" & p).Formula = "=IFERROR(I" & p & "/365,"""")"
+    ws.Range("K" & p).Formula = "=" & B & "AJ" & b2
+    ws.Range("L" & p).Formula = "=" & B & "AK" & b2
+    ws.Range("M" & p).Formula = "=IF(OR(NOT(ISNUMBER(K" & p & ")),NOT(ISNUMBER(L" & p & "))),"""",K" & p & "-L" & p & ")"
+
+    ws.Range("N" & p).Formula = "=" & B & "AF" & b2
+    ws.Range("O" & p).Formula = "=" & B & "Y" & b2
+    ws.Range("P" & p).Formula = "=" & B & "BP" & b2
+    ws.Range("Q" & p).Formula = "=" & B & "Q" & b2
+    ws.Range("R" & p).Formula = "=" & B & "P" & b2
+    ws.Range("S" & p).Formula = "=IF(AND(ISNUMBER(Q" & p & "),ISNUMBER(R" & p & ")),(R" & p & "-Q" & p & ")*10000,"""")"
+
+    ws.Range("T" & p).Formula = "=" & B & "BF" & b2
+    ws.Range("U" & p).Formula = "=" & B & "BE" & b2
+    ws.Range("V" & p).Formula = "=IF(AND(ISNUMBER(T" & p & "),ISNUMBER(U" & p & ")),(U" & p & "-T" & p & ")*10000,"""")"
+
+    ws.Range("W" & p).Formula = "=" & B & "BJ" & b2
+    ws.Range("X" & p).Formula = "=" & B & "BI" & b2
+    ws.Range("Y" & p).Formula = "=" & B & "BK" & b2
+
+    ws.Range("Z" & p).Formula = "=" & B & "BH" & b2
+    ws.Range("AA" & p).Formula = "=" & B & "BG" & b2
+    ws.Range("AB" & p).Formula = "=IF(AND(ISNUMBER(Z" & p & "),ISNUMBER(AA" & p & ")),(AA" & p & "-Z" & p & ")*10000,"""")"
+
+    ws.Range("AC" & p).Formula = "=" & B & "BM" & b2
+    ws.Range("AD" & p).Formula = "=" & B & "BL" & b2
+    ws.Range("AE" & p).Formula = "=" & B & "BN" & b2
+
+    ws.Range("AF" & p).Formula = "=" & B & "AN" & b2
+    ws.Range("AG" & p).Formula = "=" & B & "AM" & b2
+    ws.Range("AH" & p).Formula = "=" & B & "BO" & b2
+
+    ws.Range("AI" & p).Formula = "=" & B & "AG" & b2
+    ws.Range("AJ" & p).Formula = "=" & B & "AB" & b2
+    ws.Range("AK" & p).Formula = "=IF(AND(ISNUMBER(AI" & p & "),ISNUMBER(AJ" & p & ")),AJ" & p & "-AI" & p & ","""")"
+
+    ws.Range("AL" & p).Formula = "=" & B & "AP" & b2
+    ws.Range("AM" & p).Formula = "=" & B & "AO" & b2
+    ws.Range("AN" & p).Formula = "=IF(AND(ISNUMBER(AL" & p & "),ISNUMBER(AM" & p & ")),AM" & p & "-AL" & p & ","""")"
+
+    ws.Range("AO" & p).Formula = "=" & B & "AH" & b2
+    ws.Range("AP" & p).Formula = "=" & B & "AC" & b2
+    ws.Range("AQ" & p).Formula = "=IF(AND(ISNUMBER(AO" & p & "),ISNUMBER(AP" & p & ")),AP" & p & "-AO" & p & ","""")"
+
+    ws.Range("AR" & p).Formula = "=" & B & "AU" & b2
+    ws.Range("AS" & p).Formula = "=" & B & "AT" & b2
+    ws.Range("AT" & p).Formula = "=" & B & "AV" & b2
+
+    ws.Range("AU" & p).Formula = "=" & B & "AI" & b2
+    ws.Range("AV" & p).Formula = "=" & B & "Z" & b2
+    ws.Range("AW" & p).Formula = "=" & B & "AA" & b2
+    ws.Range("AX" & p).Formula = "=" & B & "AX" & b2
+
+    ' Duration components (use OIS/Gov/Swap/I deltas, all blank-guarded)
+    ws.Range("AZ" & p).Formula = "=IF(AND(ISNUMBER(AU" & p & "),ISNUMBER(S" & p & ")),-AU" & p & "*S" & p & ",0)"
+    ws.Range("BA" & p).Formula = "=IF(AND(ISNUMBER(AU" & p & "),ISNUMBER(Y" & p & ")),-AU" & p & "*Y" & p & ",0)"
+    ws.Range("BB" & p).Formula = "=IF(AND(ISNUMBER(AU" & p & "),ISNUMBER(AE" & p & ")),-AU" & p & "*AE" & p & ",0)"
+    ws.Range("BC" & p).Formula = "=IF(AND(ISNUMBER(AU" & p & "),ISNUMBER(AH" & p & ")),-AU" & p & "*AH" & p & ",0)"
+    ws.Range("AY" & p).Formula = "=SUM(AZ" & p & ":BC" & p & ")"
+    ws.Range("BD" & p).Formula = "=IF(AND(ISNUMBER(H" & p & "),ISNUMBER(K" & p & "),ISNUMBER(AW" & p & "),ISNUMBER(P" & p & ")),0.5*H" & p & "*K" & p & "*AW" & p & "*(P" & p & "/10000)^2,0)"
+
+    ' Carry components
+    ws.Range("BE" & p).Formula = "=IFERROR(H" & p & "*G" & p & "*" & B & "D" & b2 & "*J" & p & "*" & B & "T" & b2 & ",0)"
+    ' Carry_RollToPar (corrected: single roll term, no double count)
+    ws.Range("BF" & p).Formula = "=IFERROR(H" & p & "*K" & p & "*(-AV" & p & ")*0.0001*(P" & p & "/MAX(1,I" & p & ")),0)"
+    ws.Range("BG" & p).Formula = "=IFERROR(-H" & p & "*K" & p & "*IF(ABS(" & B & "BS" & b2 & ")>1," & B & "BS" & b2 & "/100," & B & "BS" & b2 & ")*J" & p & ",0)"
+    ws.Range("BH" & p).Formula = "=SUM(BE" & p & ":BG" & p & ")"
+
+    ' Alternative spread-lens PnLs (diagnostic)
+    ws.Range("BI" & p).Formula = "=IF(AND(ISNUMBER(AU" & p & "),ISNUMBER(AK" & p & ")),-AU" & p & "*AK" & p & ",0)"
+    ws.Range("BJ" & p).Formula = "=IF(AND(ISNUMBER(AU" & p & "),ISNUMBER(AN" & p & ")),-AU" & p & "*AN" & p & ",0)"
+    ws.Range("BK" & p).Formula = "=IF(AND(ISNUMBER(AU" & p & "),ISNUMBER(AQ" & p & ")),-AU" & p & "*AQ" & p & ",0)"
+    ws.Range("BL" & p).Formula = "=IF(AND(ISNUMBER(AU" & p & "),ISNUMBER(AT" & p & ")),-AU" & p & "*AT" & p & ",0)"
+    ws.Range("BM" & p).Formula = "=SWITCH(" & c & CFG_SPREAD_FRAMEWORK & ",""Z"",BI" & p & ",""G"",BJ" & p & ",""ASW"",BK" & p & ",""OAS"",BL" & p & ",""I"",BC" & p & ",BC" & p & ")"
+
+    ' FX, Futures, Swap, Basis
+    ws.Range("BN" & p).Formula = "=IFERROR(IF(D" & p & "=""EUR"",0,(K" & p & "/" & B & "T" & b2 & ")*(" & B & "T" & b2 & "-" & B & "U" & b2 & ")),0)"
+    ' Futures: SUMIFS but only one match key (avoid double-attribution).  Match on
+    ' explicit hedge-link column J in Futures; do NOT also add CTD-ISIN matches.
+    ws.Range("BO" & p).Formula = "=IFERROR(SUMIFS(" & Fu & "$U:$U," & Fu & "$J:$J,A" & p & "),0)"
+    ws.Range("BP" & p).Formula = "=IFERROR(SUMIFS(" & Sw & "$AC:$AC," & Sw & "$K:$K,A" & p & "),0)"
+    ws.Range("BQ" & p).Formula = "=BO" & p & "+BP" & p
+    ws.Range("BR" & p).Value = 0
+
+    ' Total explained
+    ws.Range("BS" & p).Formula = "=AY" & p & "+BD" & p & "+BH" & p & "+BN" & p & "+BQ" & p & "+BR" & p
+    ws.Range("BT" & p).Formula = "=IF(" & c & CFG_ACTUAL_PNL_SOURCE & "=""PROXY"",M" & p & ","""")"
+    ws.Range("BU" & p).Formula = "=IF(OR(BT" & p & "="""",NOT(ISNUMBER(BT" & p & "))),"""",BT" & p & "-BS" & p & ")"
+    ws.Range("BV" & p).Formula = "=IFERROR(BU" & p & "/ABS(BT" & p & "),"""")"
+
+    ws.Range("BW" & p).Formula = "=IFERROR(SUMIFS(" & Fu & "$AE:$AE," & Fu & "$J:$J,A" & p & "),0)"
+    ws.Range("BX" & p).Formula = "=AU" & p & "+BW" & p
+    ws.Range("BY" & p).Formula = "=IFERROR(-BW" & p & "/AU" & p & ","""")"
+    ws.Range("BZ" & p).Formula = "=IFERROR(1-ABS(BX" & p & ")/ABS(AU" & p & "),"""")"
+
+    ' Attribution_Status: surfaces bond status, missing T0/T1, and broken total.
+    ws.Range("CA" & p).Formula = _
+        "=IF(" & B & "BU" & b2 & "<>""OK""," & B & "BU" & b2 & "," & _
+        "IF(OR(NOT(ISNUMBER(K" & p & ")),NOT(ISNUMBER(L" & p & "))),""Missing MV T0/T1""," & _
+        "IF(ISERROR(BS" & p & "),""Formula broken""," & _
+        "IF(AND(ISNUMBER(BT" & p & "),ABS(BU" & p & ")>ABS(BT" & p & ")*0.1),""High residual"",""OK""))))"
+End Sub
+
+Private Function BDHLastPointExprR1C1( _
+    ByVal secExpr As String, _
+    ByVal fieldExpr As String, _
+    ByVal startDateExpr As String, _
+    ByVal endDateExpr As String) As String
+
+    ' -------------------------------------------------------------------------
+    ' Safer BDH single-point extractor.
+    '
+    ' OLD VERSION USED:
+    '   "Days=W","Fill=P","UseDPDF=N","Dts=H","Cols=N"
+    '
+    ' That is dangerous because UseDPDF / Dts / Cols can be interpreted by
+    ' Bloomberg as invalid override field IDs depending on the Excel API version.
+    '
+    ' NEW VERSION:
+    '   Keeps only safer BDH options:
+    '       "Days=W"
+    '       "Fill=P"
+    '       "Sort=A"
+    '
+    ' Then it handles either:
+    '   - normal BDH 2-column output: Date | Value
+    '   - compressed/single-column output, if Bloomberg returns that
+    '
+    ' It returns the last available value in the BDH result.
+    ' -------------------------------------------------------------------------
+
+    BDHLastPointExprR1C1 = _
+        "IFERROR(" & _
+            "LET(" & _
+                "_bdh,BDH(" & secExpr & "," & fieldExpr & "," & _
+                    startDateExpr & "," & endDateExpr & "," & _
+                    """Days=W"",""Fill=P"",""Sort=A"")," & _
+                "_r,ROWS(_bdh)," & _
+                "_c,COLUMNS(_bdh)," & _
+                "IF(_c>=2,INDEX(_bdh,_r,2),INDEX(_bdh,_r,1))" & _
+            ")," & _
+        """"")"
+
+End Function
+
+' Progress-aware readiness wait.
+'
+'   The old version used a FLAT deadline: if any cell was still "#N/A Requesting Data"
+'   when CFG_BBG_TIMEOUT elapsed it failed - even though the data was still streaming in
+'   and finished moments later.  That false-aborted Step 4 on large BDH batches (117
+'   curve cells, and 4,800 bond/future staging cells).
+'
+'   This version waits as long as Bloomberg keeps making PROGRESS (the count of pending
+'   cells keeps dropping) and only fails on:
+'     * a hard session error (Connection / Authorization / Invalid override), or
+'     * a true STALL (no progress for CFG_BBG_TIMEOUT seconds), or
+'     * an absolute cap (safety, for genuinely stuck batches).
+'   A final settle + authoritative re-scan closes the race where the last cells resolve
+'   just as the loop ends.
+Private Function WaitForBloombergReadyMany(ByVal wsCfg As Worksheet, ParamArray rngs() As Variant) As Boolean
+    Dim stallSec As Long
+    stallSec = val(CleanText(wsCfg.Range(CFG_BBG_TIMEOUT).Value))
+    If stallSec <= 0 Then stallSec = 120
+    If stallSec < 30 Then stallSec = 30
+
+    Dim capSec As Long
+    capSec = stallSec * 6
+    If capSec < 600 Then capSec = 600          ' absolute safety cap (>= 10 min)
+
+    Dim tStart As Single:    tStart = Timer
+    Dim tProgress As Single: tProgress = Timer
+    Dim prevPending As Long: prevPending = -1
+    Dim curPending As Long
+
+    Dim rngArr As Variant
+    rngArr = rngs
+
+    Do
+        DoEvents
+        Application.Calculate
+
+        ' Genuine session failure -> stop now (data is not actually coming).
+        If RangeHasHardBBGError(rngArr) Then
+            WaitForBloombergReadyMany = False
+            Exit Function
+        End If
+
+        curPending = CountPendingBBG(rngArr)
+        If curPending = 0 Then Exit Do                       ' everything settled
+
+        ' Progress resets the stall timer; large batches keep getting time as long as
+        ' cells keep clearing.
+        If prevPending < 0 Or curPending < prevPending Then tProgress = Timer
+        prevPending = curPending
+
+        If (Timer - tProgress) > stallSec Then Exit Do       ' stalled (no progress)
+        If (Timer - tStart) > capSec Then Exit Do            ' absolute cap
+
+        WaitSeconds 1
+    Loop
+
+    ' Final settle, then make the authoritative decision from actual cell state.
+    DoEvents
+    Application.Calculate
+    WaitSeconds 1
+    DoEvents
+    Application.Calculate
+
+    If CountPendingBBG(rngArr) > 0 Then
+        WaitForBloombergReadyMany = False
+        Exit Function
+    End If
+
+    If RangeHasHardBBGError(rngArr) Then
+        WaitForBloombergReadyMany = False
+        Exit Function
+    End If
+
+    WaitForBloombergReadyMany = True
+End Function
+
+' Total number of cells still showing a Bloomberg "Requesting"/pending state.
+Private Function CountPendingBBG(ByVal rngs As Variant) As Long
+    Dim i As Long, n As Long
+    Dim rg As Range
+    n = 0
+    For i = LBound(rngs) To UBound(rngs)
+        If TypeName(rngs(i)) = "Range" Then
+            Set rg = rngs(i)
+            If RangeHasPendingBBG(rg) Then
+                Dim c As Range
+                For Each c In rg.Cells
+                    If InStr(1, CStr(c.Text), "Requesting", vbTextCompare) > 0 Then n = n + 1
+                Next c
+            End If
+        End If
+    Next i
+    CountPendingBBG = n
+End Function
+
+' True only for HARD Bloomberg errors that will not resolve by waiting (session/auth/
+' invalid override).  Transient "Requesting" is deliberately excluded.
+Private Function RangeHasHardBBGError(ByVal rngs As Variant) As Boolean
+    Dim i As Long
+    Dim rg As Range
+    Dim c As Range
+    Dim txt As String
+    For i = LBound(rngs) To UBound(rngs)
+        If TypeName(rngs(i)) = "Range" Then
+            Set rg = rngs(i)
+            For Each c In rg.Cells
+                txt = CStr(c.Text)
+                If InStr(1, txt, "#N/A Connection", vbTextCompare) > 0 _
+                   Or InStr(1, txt, "Authorization", vbTextCompare) > 0 _
+                   Or InStr(1, txt, "Invalid override field id", vbTextCompare) > 0 Then
+                    Debug.Print "Hard Bloomberg error at " & c.Worksheet.Name & "!" & c.Address(False, False) & " -> " & txt
+                    RangeHasHardBBGError = True
+                    Exit Function
+                End If
+            Next c
+        End If
+    Next i
+    RangeHasHardBBGError = False
+End Function
+
+Private Function RangeHasUnresolvedBBGProblem(ByVal rng As Range) As Boolean
+
+    Dim c As Range
+    Dim txt As String
+
+    For Each c In rng.Cells
+
+        txt = CStr(c.Text)
+
+        If InStr(1, txt, "Requesting", vbTextCompare) > 0 Then
+            RangeHasUnresolvedBBGProblem = True
+            Exit Function
+        End If
+
+        If InStr(1, txt, "#N/A Requesting", vbTextCompare) > 0 Then
+            RangeHasUnresolvedBBGProblem = True
+            Exit Function
+        End If
+
+        If InStr(1, txt, "#N/A Connection", vbTextCompare) > 0 Then
+            RangeHasUnresolvedBBGProblem = True
+            Exit Function
+        End If
+
+        If InStr(1, txt, "#N/A Invalid", vbTextCompare) > 0 Then
+            Debug.Print "Bloomberg invalid formula at " & c.Worksheet.Name & "!" & c.Address(False, False)
+            Debug.Print c.FormulaR1C1
+
+            RangeHasUnresolvedBBGProblem = True
+            Exit Function
+        End If
+
+        If InStr(1, txt, "Invalid override field id", vbTextCompare) > 0 Then
+            Debug.Print "Invalid override field ID at " & c.Worksheet.Name & "!" & c.Address(False, False)
+            Debug.Print c.FormulaR1C1
+
+            RangeHasUnresolvedBBGProblem = True
+            Exit Function
+        End If
+
+        If InStr(1, txt, "Authorization", vbTextCompare) > 0 Then
+            RangeHasUnresolvedBBGProblem = True
+            Exit Function
+        End If
+
+    Next c
+
+    RangeHasUnresolvedBBGProblem = False
+
+End Function
+
+Private Sub CopyCurveT0StagingToModelInputs_OptionB(ws As Worksheet)
+    Dim snapOutCols As Variant
+    Dim modelCols As Variant
+    Dim snapRows As Variant
+
+    snapOutCols = Array("A", "D", "G", "R", "U", "Y", "AI", "AL", "AO")
+
+    ' Official T0 model input columns used by InterpOIS / InterpGov / InterpSwap:
+    ' EUR: D/G/J
+    ' USD: U/X/AA
+    ' GBP: AL/AO/AR
+    modelCols = Array("D", "G", "J", "U", "X", "AA", "AL", "AO", "AR")
+
+    snapRows = Array(51, 56, 62, 67, 72, 77, 82, 87, 92, 97, 102, 107, 112)
+
+    Dim blockIdx As Long
+    Dim tenorIdx As Long
+
+    For blockIdx = LBound(snapOutCols) To UBound(snapOutCols)
+        For tenorIdx = LBound(snapRows) To UBound(snapRows)
+
+            ws.Range(CStr(modelCols(blockIdx)) & CStr(7 + tenorIdx)).Value = _
+                ws.Range(CStr(snapOutCols(blockIdx)) & CStr(snapRows(tenorIdx))).Value
+
+        Next tenorIdx
+    Next blockIdx
+End Sub
+
+Private Function WriteCurveT0BDHFormulas_OptionB(ws As Worksheet) As Range
+    Dim outCols As Variant
+    Dim tickerCols As Variant
+    Dim snapRows As Variant
+
+    outCols = Array("A", "D", "G", "R", "U", "Y", "AI", "AL", "AO")
+    tickerCols = Array("C", "F", "I", "T", "W", "Z", "AK", "AN", "AQ")
+
+    snapRows = Array(51, 56, 62, 67, 72, 77, 82, 87, 92, 97, 102, 107, 112)
+
+    Dim blockIdx As Long
+    Dim tenorIdx As Long
+    Dim tickerColNum As Long
+    Dim outColNum As Long
+    Dim tickerRow As Long
+    Dim outRow As Long
+
+    Dim outCell As Range
+    Dim targetRng As Range
+
+    For blockIdx = LBound(outCols) To UBound(outCols)
+
+        tickerColNum = ws.Range(CStr(tickerCols(blockIdx)) & "1").Column
+        outColNum = ws.Range(CStr(outCols(blockIdx)) & "1").Column
+
+        For tenorIdx = LBound(snapRows) To UBound(snapRows)
+
+            tickerRow = 7 + tenorIdx
+            outRow = CLng(snapRows(tenorIdx))
+
+            Set outCell = ws.Cells(outRow, outColNum)
+
+            outCell.FormulaR1C1 = _
+                "=IF(R" & tickerRow & "C" & tickerColNum & "="""",""""," & _
+                BDHLastPointExprR1C1( _
+                    "R" & tickerRow & "C" & tickerColNum, _
+                    """PX_LAST""", _
+                    "R46C2", _
+                    "R47C2" _
+                ) & ")"
+
+            If targetRng Is Nothing Then
+                Set targetRng = outCell
+            Else
+                Set targetRng = Application.Union(targetRng, outCell)
+            End If
+
+        Next tenorIdx
+    Next blockIdx
+
+    Set WriteCurveT0BDHFormulas_OptionB = targetRng
+End Function
+
+
+' =============================================================================
+' BUTTON 4 - FREEZE T0 SNAPSHOT
+'   Writes BDH formulas, refreshes, then converts T0 ranges to static values.
+'   Missing-as-blank is preserved by the BDH writers (they return "").
+' =============================================================================
+
+Public Sub Freeze_T0_Snapshot_Step4()
+    Dim wb As Workbook: Set wb = ThisWorkbook
+    Dim wsCfg As Worksheet: Set wsCfg = wb.Worksheets(SH_CONFIG)
+    Dim wsOIS As Worksheet: Set wsOIS = wb.Worksheets(SH_OIS)
+    Dim wsBnd As Worksheet: Set wsBnd = wb.Worksheets(SH_BONDS)
+    Dim wsFut As Worksheet: Set wsFut = wb.Worksheets(SH_FUTURES)
+
+    Dim oldCalc As XlCalculation
+    oldCalc = Application.Calculation
+
+    On Error GoTo CleanFail
+
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+
+    Dim t0DateTime As Date
+    t0DateTime = GetOrSetT0SnapshotDateTime(wsCfg)
+
+    wsOIS.Range("A44").Value = "T0 curve snapshot datetime"
+    wsOIS.Range("B44").Value = t0DateTime
+    wsOIS.Range("B44").NumberFormat = "dd/mm/yyyy hh:mm"
+
+    wsOIS.Range("A46").Value = "BDH start date"
+    wsOIS.Range("B46").Value = PrevBusinessDay(DateValue(t0DateTime))
+    wsOIS.Range("B46").NumberFormat = "dd/mm/yyyy"
+
+    wsOIS.Range("A47").Value = "BDH end date"
+    wsOIS.Range("B47").Value = DateValue(t0DateTime)
+    wsOIS.Range("B47").NumberFormat = "dd/mm/yyyy"
+
+    wsOIS.Range("A48").Value = "Last frozen at"
+    wsOIS.Range("B48").Value = Now()
+    wsOIS.Range("B48").NumberFormat = "dd/mm/yyyy hh:mm:ss"
+
+    Dim curveStagingRng As Range
+    Set curveStagingRng = WriteCurveT0BDHFormulas_OptionB(wsOIS)
+
+    RefreshBloombergAndWaitMany wsCfg, curveStagingRng
+
+    If Not WaitForBloombergReadyMany(wsCfg, curveStagingRng) Then
+        Err.Raise 9510, , _
+            "Bloomberg curve T0 requests did not finish cleanly. " & _
+            "The macro stopped before freezing to avoid storing #N/A Requesting Data."
+    End If
+
+    wsOIS.Calculate
+
+    FreezeRange curveStagingRng
+    CopyCurveT0StagingToModelInputs_OptionB wsOIS
+
+    Dim lastBondRow As Long
+    lastBondRow = LastBondDataRow(wsBnd)
+
+    If lastBondRow >= DATA_ROW Then
+        WriteBondsCalculatedFormulas_Efficient wsBnd, lastBondRow
+    End If
+
+    Dim lastFutRow As Long
+    lastFutRow = LastFutureDataRow(wsFut)
+
+    ' --- T0 market pulls: ONE multi-field BDH per bond, processed in memory-bounded
+    '     batches (see RefreshFreezeBondT0_Chunked).  Batch size from Config CFG_T0_BATCH. ---
+    Dim wsStg As Worksheet
+    Set wsStg = EnsureT0StagingSheet()
+
+    Dim t0Batch As Long
+    t0Batch = val(CleanText(wsCfg.Range(CFG_T0_BATCH).Value))
+    If t0Batch < 1 Then t0Batch = 100
+
+    RefreshFreezeBondT0_Chunked wsCfg, wsStg, wsBnd, lastBondRow, t0Batch
+    RefreshFreezeFutureT0 wsCfg, wsStg, wsFut, lastFutRow
+
+    If lastBondRow >= DATA_ROW Then WriteBonds_T0_DerivedSpreads wsBnd, lastBondRow
+    If lastFutRow >= DATA_ROW Then WriteFutures_T0_Status wsFut, lastFutRow
+
+    wsOIS.Calculate
+    wsBnd.Calculate
+    wsFut.Calculate
+
+    FreezeT0Ranges wsOIS, wsBnd, wsFut
+
+    ' Re-hide the staging sheet now that values are copied and frozen.
+    wsStg.Visible = xlSheetVeryHidden
+
+    wsCfg.Range(CFG_LAST_BBG).Value = Now()
+
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+
+    MsgBox "Step 4 complete: T0 snapshot frozen." & vbCrLf & _
+           "T0 datetime used: " & Format(t0DateTime, "dd/mm/yyyy hh:mm"), _
+           vbInformation
+
+    Exit Sub
+
+CleanFail:
+    Dim eInfo As String: eInfo = CaptureErrInfo()
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+
+    MsgBox "Step 4 failed:" & vbCrLf & eInfo, vbCritical
+End Sub
+
+Private Sub FreezeT0Ranges(wsOIS As Worksheet, wsBnd As Worksheet, wsFut As Worksheet)
+    FreezeRange wsOIS.Range("D7:D19,G7:G19,J7:J19,U7:U19,X7:X19,AA7:AA19,AL7:AL19,AO7:AO19,AR7:AR19")
+    FreezeRange wsBnd.Range("U" & DATA_ROW & ":U" & CStr(DATA_ROW + N_BOND_ROWS - 1))
+    FreezeRange wsBnd.Range("AD" & DATA_ROW & ":AH" & CStr(DATA_ROW + N_BOND_ROWS - 1))
+    FreezeRange wsBnd.Range("AN" & DATA_ROW & ":AN" & CStr(DATA_ROW + N_BOND_ROWS - 1))
+    FreezeRange wsBnd.Range("AP" & DATA_ROW & ":AP" & CStr(DATA_ROW + N_BOND_ROWS - 1))
+    FreezeRange wsBnd.Range("AU" & DATA_ROW & ":AU" & CStr(DATA_ROW + N_BOND_ROWS - 1))
+    FreezeRange wsBnd.Range("BT" & DATA_ROW & ":BT" & CStr(DATA_ROW + N_BOND_ROWS - 1))
+    FreezeRange wsFut.Range("Q" & DATA_ROW & ":Q" & CStr(DATA_ROW + N_FUT_ROWS - 1))
+End Sub
+
+Private Sub FreezeRange(rng As Range)
+    Dim a As Range
+    For Each a In rng.Areas
+        a.Value = a.Value
+    Next a
+End Sub
+
+
+' =============================================================================
+' BUTTON 5 - RECALCULATE PNL
+' =============================================================================
+
+Public Sub RecalculatePNL_Step5()
+    Dim wb As Workbook: Set wb = ThisWorkbook
+    Dim wsBnd As Worksheet: Set wsBnd = wb.Worksheets(SH_BONDS)
+    Dim wsSw As Worksheet:  Set wsSw = wb.Worksheets(SH_SWAPS)
+    Dim wsFut As Worksheet: Set wsFut = wb.Worksheets(SH_FUTURES)
+    Dim wsPnl As Worksheet: Set wsPnl = wb.Worksheets(SH_PNL)
+
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+
+    SetupPNLAttributionHeaders wsPnl
+    WriteBondsCalculatedFormulas_Efficient wsBnd, LastBondDataRow(wsBnd)
+    WriteSwapsCalculatedFormulas wsSw
+    WriteFuturesCalculatedFormulas_Efficient wsFut, LastFutureDataRow(wsFut)
+    WritePNLAttributionRows wsPnl, wsBnd
+
+    Application.CalculateFull
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    MsgBox "Step 5 complete: PnL attribution recalculated.", vbInformation
+End Sub
+
+
+' =============================================================================
+' SQL QUERY BUILDERS  (verbatim from original; unchanged - OPICS schema is correct)
+' =============================================================================
+
+Private Function GetBondSelectQuery( _
+    ByVal allInvTypes As String, _
+    ByVal isinType As String, _
+    ByVal asOf As String, _
+    Optional ByVal branchCode As String = "") As String
+    Dim s As String
+    s = s & "SELECT isin.SECALTID AS ISIN,"
+    s = s & " sm.DESCR AS Name,"
+    s = s & " sp.CCY AS Currency,"
+    s = s & " sm.COUPRATE_8 AS Coupon_Dec,"
+    s = s & " sm.INTPAYCYCLE AS CouponFreq,"
+    s = s & " sm.MDATE AS MaturityDate,"
+    s = s & " sp.QTY AS Notional,"
+    s = s & " CASE"
+    s = s & " WHEN ABS(ISNULL(sp.QTY,0))>0 AND ABS(ISNULL(tp.TDBOOKVALUE,0))>0 THEN ABS(tp.TDBOOKVALUE)/NULLIF(ABS(sp.QTY),0)*100"
+    s = s & " WHEN ABS(ISNULL(sp.QTY,0))>0 AND ABS(ISNULL(tp.ADJTDBOOKVAL,0))>0 THEN ABS(tp.ADJTDBOOKVAL)/NULLIF(ABS(sp.QTY),0)*100"
+    s = s & " ELSE ISNULL(sp.PURCHAVGCOST,0) END AS AvgCost,"
+    s = s & " sp.SETTDATE AS EntryDate,"
+    s = s & " sp.PORT AS Portfolio,"
+    s = s & " LTRIM(RTRIM(sp.INVTYPE)) AS AcctgCat,"
+    s = s & " sp.BR AS Branch,"
+    s = s & " sm.PRODUCT AS Product,"
+    s = s & " ISNULL(rp.REPORATE_8,0) AS FundingRate_Dec,"
+    s = s & " ISNULL(tp.TDBOOKVALUE,0) AS BookVal_EUR"
+    s = s & " FROM dbo.SPOS sp"
+    s = s & " INNER JOIN dbo.SECM sm ON sm.SECID=sp.SECID"
+    s = s & " LEFT JOIN dbo.ASID isin ON isin.SECID=sp.SECID AND isin.SECIDTYPE='" & EscapeSQL(isinType) & "'"
+    s = s & " LEFT JOIN dbo.TPOS tp ON tp.BR=sp.BR AND tp.COST=sp.COST AND tp.PORT=sp.PORT AND tp.SECID=sp.SECID AND tp.INVTYPE=sp.INVTYPE"
+    s = s & " LEFT JOIN (SELECT r2.SECID,r2.PORT,AVG(r2.REPORATE_8) AS REPORATE_8 FROM dbo.RPDT r2"
+    s = s & " WHERE r2.VDATE<='" & asOf & "' AND r2.MDATE>='" & asOf & "' GROUP BY r2.SECID,r2.PORT) rp"
+    s = s & " ON rp.SECID=sp.SECID AND rp.PORT=sp.PORT"
+    s = s & " WHERE sp.QTY<>0"
+    s = s & " AND sp.PORT='PORT'"
+
+    If CleanText(branchCode) <> "" Then
+        s = s & " AND LTRIM(RTRIM(sp.BR))='" & EscapeSQL(branchCode) & "'"
+    End If
+
+    s = s & " AND LTRIM(RTRIM(sp.INVTYPE)) IN (" & allInvTypes & ")"
+    s = s & " AND LTRIM(RTRIM(sp.INVTYPE)) <> 'T'"
+    s = s & " AND LTRIM(RTRIM(sm.PRODUCT)) IN ('OBR','SECUR')"
+    s = s & " ORDER BY sp.CCY,LTRIM(RTRIM(sp.INVTYPE)),sp.COST,sm.MDATE"
+    GetBondSelectQuery = s
+End Function
+
+Private Function GetSwapSelectQuery(allPorts As String, isinList As String, isinType As String, asOf As String) As String
+    Dim portFilter As String, isinFilter As String, whereClause As String, s As String
+    If allPorts <> "" Then portFilter = "LTRIM(RTRIM(sw.PORT)) IN (" & allPorts & ")"
+    If isinList <> "" Then isinFilter = "sw.UNDSECID IN (SELECT SECID FROM dbo.ASID WHERE SECALTID IN (" & isinList & ") AND SECIDTYPE='" & EscapeSQL(isinType) & "')"
+
+    If portFilter <> "" And isinFilter <> "" Then
+        whereClause = "(" & portFilter & " OR " & isinFilter & ")"
+    ElseIf portFilter <> "" Then
+        whereClause = portFilter
+    ElseIf isinFilter <> "" Then
+        whereClause = isinFilter
+    Else
+        whereClause = "1=1"
+    End If
+
+    s = s & "SELECT sw.DEALNO AS DealID,"
+    s = s & " NULL AS Ccy,NULL AS Notional,NULL AS FixedRate,NULL AS FloatIndex,NULL AS FloatSpread,"
+    s = s & " sw.STARTDATE AS StartDate,sw.MATDATE AS EndDate,NULL AS PayFixed,sw.PORT AS Portfolio,"
+    s = s & " (SELECT TOP 1 a2.SECALTID FROM dbo.ASID a2 WHERE a2.SECID=sw.UNDSECID AND a2.SECIDTYPE='" & EscapeSQL(isinType) & "') AS LinkedISIN,"
+    s = s & " c.SN AS CptyName"
+    s = s & " FROM dbo.SWDH sw"
+    s = s & " LEFT JOIN dbo.CUST c ON c.CNO=sw.CNO"
+    s = s & " WHERE LTRIM(RTRIM(CONVERT(varchar(10),sw.VERIND)))='1'"
+    s = s & " AND LTRIM(RTRIM(sw.PRODUCT))='SWAP'"
+    s = s & " AND sw.MATDATE>'" & asOf & "'"
+    s = s & " AND " & whereClause
+    s = s & " ORDER BY sw.PORT,sw.MATDATE"
+    GetSwapSelectQuery = s
+End Function
+
+Private Function GetFuturesSelectQuery(allPorts As String, isinType As String, asOf As String) As String
+    Dim s As String
+    s = s & "WITH CTD AS (SELECT BR,CONTCODE,DELVDATE,CONVFACTOR_8,UNDSECID,"
+    s = s & " ROW_NUMBER() OVER(PARTITION BY BR,CONTCODE ORDER BY DELVDATE) AS RN"
+    s = s & " FROM dbo.FDEL WHERE DELVDATE>='" & asOf & "'),"
+    s = s & " AE AS (SELECT BR,PORT,COST,CONTCODE,"
+    s = s & " SUM(NUMCONT*CONTPRICE_8)/NULLIF(SUM(ABS(NUMCONT)),0) AS AvgPx"
+    s = s & " FROM dbo.FFDH WHERE VERIND='Y' AND (REVREASON IS NULL OR REVREASON='')"
+    s = s & " GROUP BY BR,PORT,COST,CONTCODE)"
+    s = s & " SELECT fp.CONTCODE AS ContractCode,fc.EXCHANGE AS Exchange,fc.CCY AS Currency,"
+    s = s & " fp.NUMCONT AS Contracts,fc.FACEVALUE AS FaceValue,ctd.DELVDATE AS DelivDate,"
+    s = s & " isin.SECALTID AS CTD_ISIN,ctd.CONVFACTOR_8 AS CTD_CF,fp.PORT AS Portfolio,"
+    s = s & " (SELECT TOP 1 a3.SECALTID FROM dbo.ASID a3 WHERE a3.SECID=("
+    s = s & " SELECT TOP 1 fh2.UNDSECID FROM dbo.FFDH fh2 WHERE fh2.BR=fp.BR AND fh2.CONTCODE=fp.CONTCODE"
+    s = s & " AND fh2.UNDSECID IS NOT NULL AND fh2.UNDSECID<>'' ORDER BY fh2.DEALDATE DESC)"
+    s = s & " AND a3.SECIDTYPE='" & EscapeSQL(isinType) & "') AS LinkedISIN,"
+    s = s & " ae.AvgPx AS AvgEntryPx"
+    s = s & " FROM dbo.FPOS fp"
+    s = s & " INNER JOIN dbo.FCON fc ON fc.BR=fp.BR AND fc.CONTCODE=fp.CONTCODE AND fc.PRODUCT=fp.PRODUCT"
+    s = s & " LEFT JOIN CTD ctd ON ctd.BR=fp.BR AND ctd.CONTCODE=fp.CONTCODE AND ctd.RN=1"
+    s = s & " LEFT JOIN dbo.ASID isin ON isin.SECID=ctd.UNDSECID AND isin.SECIDTYPE='" & EscapeSQL(isinType) & "'"
+    s = s & " LEFT JOIN AE ae ON ae.BR=fp.BR AND ae.PORT=fp.PORT AND ae.CONTCODE=fp.CONTCODE"
+    s = s & " WHERE fp.NUMCONT<>0 AND fp.PORT IN (" & allPorts & ")"
+    s = s & " ORDER BY fc.CCY,fp.PORT,ctd.DELVDATE"
+    GetFuturesSelectQuery = s
+End Function
+
+
+' =============================================================================
+' INTERPOLATION UDFs  (completed - original was truncated mid-function)
+'   OIS_Curves tenor/rate layout (T0 then T1 column per block):
+'     EUR yrs=B  OIS D/E  Gov G/H  Swap J/K
+'     USD yrs=S  OIS U/V  Gov X/Y  Swap AA/AB
+'     GBP yrs=AJ OIS AL/AM Gov AO/AP Swap AR/AS
+' =============================================================================
+
+Public Function InterpOIS(ccy As String, years As Double, useT1 As Boolean) As Variant
+    InterpOIS = InterpCurveValue(ccy, "OIS", years, useT1)
+End Function
+Public Function InterpGov(ccy As String, years As Double, useT1 As Boolean) As Variant
+    InterpGov = InterpCurveValue(ccy, "GOV", years, useT1)
+End Function
+Public Function InterpSwap(ccy As String, years As Double, useT1 As Boolean) As Variant
+    InterpSwap = InterpCurveValue(ccy, "SWAP", years, useT1)
+End Function
+
+Private Function InterpCurveValue(ccy As String, curveType As String, years As Double, useT1 As Boolean) As Variant
+    On Error GoTo ErrHandler
+    Dim ws As Worksheet: Set ws = ThisWorkbook.Worksheets(SH_OIS)
+    Dim yRange As Range, rRange As Range
+
+    Select Case UCase(Trim(ccy))
+        Case "EUR"
+            Set yRange = ws.Range("B7:B19")
+            If curveType = "OIS" Then
+                If useT1 Then Set rRange = ws.Range("E7:E19") Else Set rRange = ws.Range("D7:D19")
+            ElseIf curveType = "GOV" Then
+                If useT1 Then Set rRange = ws.Range("H7:H19") Else Set rRange = ws.Range("G7:G19")
+            Else
+                If useT1 Then Set rRange = ws.Range("K7:K19") Else Set rRange = ws.Range("J7:J19")
+            End If
+        Case "USD"
+            Set yRange = ws.Range("S7:S19")
+            If curveType = "OIS" Then
+                If useT1 Then Set rRange = ws.Range("V7:V19") Else Set rRange = ws.Range("U7:U19")
+            ElseIf curveType = "GOV" Then
+                If useT1 Then Set rRange = ws.Range("Y7:Y19") Else Set rRange = ws.Range("X7:X19")
+            Else
+                If useT1 Then Set rRange = ws.Range("AB7:AB19") Else Set rRange = ws.Range("AA7:AA19")
+            End If
+        Case "GBP"
+            Set yRange = ws.Range("AJ7:AJ19")
+            If curveType = "OIS" Then
+                If useT1 Then Set rRange = ws.Range("AM7:AM19") Else Set rRange = ws.Range("AL7:AL19")
+            ElseIf curveType = "GOV" Then
+                If useT1 Then Set rRange = ws.Range("AP7:AP19") Else Set rRange = ws.Range("AO7:AO19")
+            Else
+                If useT1 Then Set rRange = ws.Range("AS7:AS19") Else Set rRange = ws.Range("AR7:AR19")
+            End If
+        Case Else
+            InterpCurveValue = CVErr(xlErrNA): Exit Function
+    End Select
+
+    InterpCurveValue = LinInterp(yRange, rRange, years)
+    Exit Function
+ErrHandler:
+    InterpCurveValue = CVErr(xlErrNA)
+End Function
+
+' Linear interpolation on (x=tenor years, y=rate) with flat extrapolation at ends.
+Private Function LinInterp(xRange As Range, yRange As Range, x As Double) As Variant
+    Dim xa() As Double, ya() As Double, n As Long, i As Long
+    Dim cx As Range, cy As Range
+    Dim xs As Variant, ys As Variant
+    xs = xRange.Value: ys = yRange.Value
+
+    ReDim xa(1 To UBound(xs, 1))
+    ReDim ya(1 To UBound(ys, 1))
+    n = 0
+    For i = 1 To UBound(xs, 1)
+        If IsNumeric(xs(i, 1)) And IsNumeric(ys(i, 1)) Then
+            If xs(i, 1) <> "" And ys(i, 1) <> "" Then
+                n = n + 1
+                xa(n) = CDbl(xs(i, 1))
+                ya(n) = CDbl(ys(i, 1))
+            End If
+        End If
+    Next i
+    If n = 0 Then LinInterp = CVErr(xlErrNA): Exit Function
+    If n = 1 Then LinInterp = ya(1): Exit Function
+
+    ' simple insertion sort by x (nodes are few)
+    Dim j As Long, tx As Double, ty As Double
+    For i = 2 To n
+        tx = xa(i): ty = ya(i): j = i - 1
+        Do While j >= 1
+            If xa(j) <= tx Then Exit Do
+            xa(j + 1) = xa(j): ya(j + 1) = ya(j): j = j - 1
+        Loop
+        xa(j + 1) = tx: ya(j + 1) = ty
+    Next i
+
+    If x <= xa(1) Then LinInterp = ya(1): Exit Function
+    If x >= xa(n) Then LinInterp = ya(n): Exit Function
+    For i = 1 To n - 1
+        If x >= xa(i) And x <= xa(i + 1) Then
+            If xa(i + 1) = xa(i) Then
+                LinInterp = ya(i)
+            Else
+                LinInterp = ya(i) + (ya(i + 1) - ya(i)) * (x - xa(i)) / (xa(i + 1) - xa(i))
+            End If
+            Exit Function
+        End If
+    Next i
+    LinInterp = ya(n)
+End Function
+
+
+' =============================================================================
+' OPICS CONNECTION
+' =============================================================================
+
+Private Function OpenOPICS(conn As Object, wsCfg As Worksheet) As Boolean
+    On Error GoTo Fail
+    Dim serverName As String, uid As String, pwd As String, connStr As String
+    serverName = Replace(CleanText(wsCfg.Range(CFG_DSN).Value), "/", "\")
+    uid = CleanText(wsCfg.Range(CFG_UID).Value)
+
+    If serverName = "" Then
+        MsgBox "Missing OPICS server/DSN in Config " & CFG_DSN & ".", vbExclamation
+        OpenOPICS = False: Exit Function
+    End If
+
+    If uid = "" Then
+        connStr = "Provider=MSOLEDBSQL;Data Source=" & serverName & _
+                  ";Initial Catalog=OpicsMain;Integrated Security=SSPI;"
+    Else
+        pwd = CStr(wsCfg.Range("B16").Value)   ' optional SQL password cell
+        connStr = "Provider=MSOLEDBSQL;Data Source=" & serverName & _
+                  ";Initial Catalog=OpicsMain;User ID=" & uid & ";Password=" & pwd & ";"
+    End If
+
+    Dim t As Long: t = val(CleanText(wsCfg.Range(CFG_BBG_TIMEOUT).Value))
+    If t <= 0 Then t = 30
+    conn.ConnectionTimeout = t
+    conn.CommandTimeout = 120
+    conn.Open connStr
+    OpenOPICS = (conn.State = 1)
+    Exit Function
+Fail:
+    MsgBox "OPICS connection failed:" & vbCrLf & Err.Description, vbCritical
+    OpenOPICS = False
+End Function
+
+Private Function GetExcelBitness() As String
+    #If Win64 Then
+        GetExcelBitness = "64-bit"
+    #Else
+        GetExcelBitness = "32-bit"
+    #End If
+End Function
+
+
+' =============================================================================
+' RECORDSET / VALUE HELPERS
+' =============================================================================
+
+Private Function Fld(rs As Object, fieldName As String) As Variant
+    On Error GoTo Miss
+    Fld = rs.fields(fieldName).Value
+    Exit Function
+Miss:
+    Fld = Null
+End Function
+
+Private Function CDblSafe(v As Variant) As Double
+    On Error GoTo Zero
+    If IsNull(v) Or v = "" Then CDblSafe = 0 Else CDblSafe = CDbl(v)
+    Exit Function
+Zero:
+    CDblSafe = 0
+End Function
+
+Private Function NullToStr(v As Variant) As String
+    If IsNull(v) Then NullToStr = "" Else NullToStr = CStr(v)
+End Function
+
+Private Function NullToDate(v As Variant) As Variant
+    On Error GoTo Blank
+    If IsNull(v) Or v = "" Then NullToDate = "" Else NullToDate = CDate(v)
+    Exit Function
+Blank:
+    NullToDate = ""
+End Function
+
+' Returns "" (blank) for NULL so the cell stays empty rather than 0.
+Private Function NullToNumBlank(v As Variant) As Variant
+    On Error GoTo Blank
+    If IsNull(v) Or v = "" Then NullToNumBlank = "" Else NullToNumBlank = CDbl(v)
+    Exit Function
+Blank:
+    NullToNumBlank = ""
+End Function
+
+Private Function CleanText(v As Variant) As String
+    If IsNull(v) Then CleanText = "" Else CleanText = Trim$(CStr(v))
+End Function
+
+Private Function EscapeSQL(s As String) As String
+    EscapeSQL = Replace(s, "'", "''")
+End Function
+
+Private Function TrimChar(s As String, ch As String) As String
+    Dim r As String: r = s
+    Do While Len(r) > 0 And Left$(r, 1) = ch
+        r = Mid$(r, 2)
+    Loop
+    Do While Len(r) > 0 And Right$(r, 1) = ch
+        r = Left$(r, Len(r) - 1)
+    Loop
+    TrimChar = r
+End Function
+
+' Builds a SQL IN-list fragment from a comma list, e.g. "H" -> "'H'" ; "A,T" -> "'A','T'"
+Private Function BuildInClause(csv As String) As String
+    Dim parts() As String, i As Long, out As String, t As String
+    If CleanText(csv) = "" Then BuildInClause = "": Exit Function
+    parts = Split(csv, ",")
+    For i = LBound(parts) To UBound(parts)
+        t = Trim$(parts(i))
+        If t <> "" Then
+            If out <> "" Then out = out & ","
+            out = out & "'" & EscapeSQL(t) & "'"
+        End If
+    Next i
+    BuildInClause = out
+End Function
+
+Private Function BuildLoadedBondISINList(wsBnd As Worksheet) As String
+    Dim lastRow As Long: lastRow = LastBondDataRow(wsBnd)
+    Dim r As Long, out As String, t As String
+    For r = DATA_ROW To lastRow
+        t = CleanText(wsBnd.Cells(r, 1).Value)
+        If t <> "" Then
+            If out <> "" Then out = out & ","
+            out = out & "'" & EscapeSQL(t) & "'"
+        End If
+    Next r
+    BuildLoadedBondISINList = out
+End Function
+
+
+' =============================================================================
+' LAST-ROW HELPERS
+' =============================================================================
+
+Private Function LastBondDataRow(ws As Worksheet) As Long
+    Dim r As Long, last As Long
+    last = DATA_ROW - 1
+    For r = DATA_ROW To DATA_ROW + N_BOND_ROWS - 1
+        If CleanText(ws.Cells(r, 1).Value) <> "" Then last = r
+    Next r
+    LastBondDataRow = last
+End Function
+
+Private Function LastFutureDataRow(ws As Worksheet) As Long
+    Dim r As Long, last As Long
+    last = DATA_ROW - 1
+    For r = DATA_ROW To DATA_ROW + N_FUT_ROWS - 1
+        If CleanText(ws.Cells(r, 1).Value) <> "" Then last = r
+    Next r
+    LastFutureDataRow = last
+End Function
+
+
+' =============================================================================
+' BOND <-> HEDGE LINKING  (writes hedge id back onto the bond row)
+'   Bond cols: BV=74 first swap link, BW=75 first future link (status/diagnostic)
+' =============================================================================
+
+Private Sub LinkSwapToBond(wsBnd As Worksheet, isin As String, dealId As String)
+    If isin = "" Then Exit Sub
+    Dim r As Long
+    For r = DATA_ROW To LastBondDataRow(wsBnd)
+        If CleanText(wsBnd.Cells(r, 1).Value) = isin Then
+            wsBnd.Cells(r, 74).Value = AppendCsv(CStr(wsBnd.Cells(r, 74).Value), dealId)
+        End If
+    Next r
+End Sub
+
+Private Sub LinkFutureToBond(wsBnd As Worksheet, isin As String, contractCode As String)
+    If isin = "" Then Exit Sub
+    Dim r As Long
+    For r = DATA_ROW To LastBondDataRow(wsBnd)
+        If CleanText(wsBnd.Cells(r, 1).Value) = isin Then
+            wsBnd.Cells(r, 75).Value = AppendCsv(CStr(wsBnd.Cells(r, 75).Value), contractCode)
+        End If
+    Next r
+End Sub
+
+Private Function AppendCsv(existing As String, item As String) As String
+    If Trim$(existing) = "" Then
+        AppendCsv = item
+    ElseIf InStr(1, "," & existing & ",", "," & item & ",") = 0 Then
+        AppendCsv = existing & "," & item
+    Else
+        AppendCsv = existing
+    End If
+End Function
+
+
+' =============================================================================
+' BLOOMBERG REFRESH + WAIT
+'   Triggers the BBG add-in recalc on the given ranges and waits for the
+'   #N/A Requesting Data... cells to clear (or timeout).
+' =============================================================================
+
+'   Compile-safe: ParamArray items are Variants, so each is cast to Range before
+'   use; RangeHasPendingBBG / WaitSeconds take ByVal to avoid ByRef mismatch.
+Private Sub RefreshBloombergAndWaitMany(ByVal wsCfg As Worksheet, ParamArray rngs() As Variant)
+    Dim i As Long
+    Dim rg As Range
+
+    On Error Resume Next
+    Application.Run "RefreshAllStaticData"     ' BBG add-in entry point (no-op if absent)
+    Application.Run "RefreshCurrentSelection"
+    Application.Run "BLP.RefreshAll"
+    On Error GoTo 0
+
+    Dim timeoutSec As Long
+    timeoutSec = val(CleanText(wsCfg.Range(CFG_BBG_TIMEOUT).Value))
+    If timeoutSec <= 0 Then timeoutSec = 60
+
+    Dim t0 As Single: t0 = Timer
+    Dim pending As Boolean
+    Do
+        DoEvents
+        Application.Calculate
+        pending = False
+        For i = LBound(rngs) To UBound(rngs)
+            If TypeName(rngs(i)) = "Range" Then
+                Set rg = rngs(i)
+                If RangeHasPendingBBG(rg) Then
+                    pending = True
+                    Exit For
+                End If
+            End If
+        Next i
+        If Not pending Then Exit Do
+        If (Timer - t0) > timeoutSec Then Exit Do
+        WaitSeconds 0.5
+    Loop
+End Sub
+
+Private Function RangeHasPendingBBG(ByVal rng As Range) As Boolean
+    Dim c As Range, v As Variant
+    For Each c In rng.Cells
+        v = c.Value
+        If IsError(v) Then
+            If InStr(1, c.Text, "Requesting", vbTextCompare) > 0 Then
+                RangeHasPendingBBG = True
+                Exit Function
+            End If
+        ElseIf VarType(v) = vbString Then
+            If InStr(1, CStr(v), "Requesting Data", vbTextCompare) > 0 _
+               Or InStr(1, CStr(v), "#N/A Requesting", vbTextCompare) > 0 Then
+                RangeHasPendingBBG = True
+                Exit Function
+            End If
+        End If
+    Next c
+    RangeHasPendingBBG = False
+End Function
+
+Private Sub WaitSeconds(ByVal s As Double)
+    Dim t As Single: t = Timer
+    Do While Timer - t < s
+        DoEvents
+    Loop
+End Sub
+
+' BDH writer used by T0 curve snapshot (single-point history -> "" on miss)
+Private Sub WriteBDHDown(ws As Worksheet, tickerCol As String, outCol As String, _
+                         firstRow As Long, lastRow As Long, fieldName As String)
+
+    Dim n As Long
+    Dim cfgT0 As String
+
+    n = ws.Range(tickerCol & "1").Column
+    cfgT0 = CfgR1C1(CFG_T0_DATE)
+
+    ws.Range(outCol & firstRow & ":" & outCol & lastRow).FormulaR1C1 = _
+        "=IF(RC" & n & "="""",""""," & _
+            BDHLastPointExprR1C1( _
+                "RC" & n, _
+                XlText(fieldName), _
+                "INT(" & cfgT0 & ")-3", _
+                "INT(" & cfgT0 & ")" _
+            ) & _
+        ")"
+
+End Sub
+
+
+' =============================================================================
+' DATE / CONFIG HELPERS
+' =============================================================================
+
+' GetAsOfDateString -> 'yyyy-mm-dd' from the T1 (as-of) config date.
+Private Function GetAsOfDateString(wsCfg As Worksheet) As String
+    Dim d As Variant: d = wsCfg.Range(CFG_T1_DATE).Value
+    If IsDate(d) Then
+        GetAsOfDateString = Format$(CDate(d), "yyyy-mm-dd")
+    Else
+        GetAsOfDateString = Format$(Date, "yyyy-mm-dd")
+    End If
+End Function
+
+' Sets T1 = last business day, T0 = prior business day, anchored to 5pm UTC cutoff.
+Private Sub Update_Config_Dates_5pmUTC(wsCfg As Worksheet)
+    ' Only auto-populate if the user has not pinned dates manually.
+    If CleanText(wsCfg.Range("B6").Value) = "AUTO" Then
+        Dim t1 As Date, t0 As Date
+        t1 = PrevBusinessDay(Date)
+        t0 = PrevBusinessDay(t1)
+        wsCfg.Range(CFG_T1_DATE).Value = t1
+        wsCfg.Range(CFG_T0_DATE).Value = t0
+    End If
+End Sub
+
+Private Function PrevBusinessDay(d As Date) As Date
+    Dim x As Date: x = d - 1
+    Do While Weekday(x, vbMonday) >= 6   ' Sat/Sun
+        x = x - 1
+    Loop
+    PrevBusinessDay = x
+End Function
+
+Private Function GetOrSetT0SnapshotDateTime(wsCfg As Worksheet) As Date
+    Dim v As Variant
+    v = wsCfg.Range(CFG_T0_DATE).Value
+
+    Dim dt As Date
+
+    If IsDate(v) Then
+        dt = CDate(v)
+
+        ' If Config!B4 only has a date and no time, assume 17:00.
+        If CDbl(dt) = Fix(CDbl(dt)) Then
+            dt = DateValue(dt) + TimeSerial(17, 0, 0)
+        End If
+    Else
+        ' If Config!B4 is blank/invalid:
+        ' use today 17:00 if today is a weekday and now is already past 17:00,
+        ' otherwise use previous business day 17:00.
+        If Weekday(Date, vbMonday) <= 5 And Time >= TimeSerial(17, 0, 0) Then
+            dt = Date + TimeSerial(17, 0, 0)
+        Else
+            dt = PrevBusinessDay(Date) + TimeSerial(17, 0, 0)
+        End If
+    End If
+
+    wsCfg.Range(CFG_T0_DATE).Value = dt
+    wsCfg.Range(CFG_T0_DATE).NumberFormat = "dd/mm/yyyy hh:mm"
+
+    GetOrSetT0SnapshotDateTime = dt
+End Function
+
+' =============================================================================
+' DIAGNOSTICS LOGGING
+' =============================================================================
+
+Private Sub SetupDiagnosticsSheet()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets(SH_DIAG)
+    On Error GoTo 0
+    If ws Is Nothing Then
+        Set ws = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        ws.Name = SH_DIAG
+    End If
+    If CleanText(ws.Range("A1").Value) = "" Then
+        ws.Range("A1:F1").Value = Array("Timestamp", "Step", "Sheet", "Address", "ErrorType", "Sample")
+        ws.Range("A1:F1").Font.Bold = True
+    End If
+End Sub
+
+' Column-signature dump for a sheet (diagnostic).  All args ByVal; first arg is a
+' Workbook (never a string).  Safe call:  Call SigForSheet(ThisWorkbook, "Bonds", 4, 5)
+Private Sub SigForSheet(ByVal wb As Workbook, ByVal sheetName As String, ByVal headerRow As Long, ByVal dataRow As Long)
+    Dim ws As Worksheet, wsOut As Worksheet
+    Dim sigHeaders As Variant
+    Dim lastCol As Long, c As Long, outRow As Long
+
+    On Error Resume Next
+    Set ws = wb.Worksheets(sheetName)
+    Set wsOut = wb.Worksheets(SH_DIAG)
+    On Error GoTo 0
+
+    If ws Is Nothing Then Exit Sub
+    If wsOut Is Nothing Then
+        SetupDiagnosticsSheet
+        Set wsOut = wb.Worksheets(SH_DIAG)
+    End If
+    If wsOut Is Nothing Then Exit Sub
+
+    sigHeaders = Array("Col", "Header", "Address", "Formula", "Value", _
+                       "NumberFormat", "Width", "Hidden")
+    wsOut.Cells(headerRow, 1).Resize(1, UBound(sigHeaders) - LBound(sigHeaders) + 1).Value = sigHeaders
+    wsOut.Cells(headerRow, 1).Resize(1, UBound(sigHeaders) - LBound(sigHeaders) + 1).Font.Bold = True
+
+    lastCol = ws.Cells(dataRow - 1, ws.Columns.Count).End(xlToLeft).Column
+    If lastCol < 1 Then Exit Sub
+
+    outRow = headerRow + 1
+    For c = 1 To lastCol
+        wsOut.Cells(outRow, 1).Value = c
+        wsOut.Cells(outRow, 2).Value = ws.Cells(dataRow - 1, c).Value
+        wsOut.Cells(outRow, 3).Value = ws.Cells(dataRow, c).Address(False, False)
+        wsOut.Cells(outRow, 4).Value = ws.Cells(dataRow, c).Formula
+        wsOut.Cells(outRow, 5).Value = ws.Cells(dataRow, c).Text
+        wsOut.Cells(outRow, 6).Value = ws.Cells(dataRow, c).NumberFormat
+        wsOut.Cells(outRow, 7).Value = ws.Columns(c).ColumnWidth
+        wsOut.Cells(outRow, 8).Value = ws.Columns(c).Hidden
+        outRow = outRow + 1
+    Next c
+End Sub
+
+Private Sub LogDiagnosticsForRanges(ByVal stepName As String, ParamArray rngs() As Variant)
+    If CleanText(ThisWorkbook.Worksheets(SH_CONFIG).Range(CFG_DIAGNOSTICS_ENABLED).Value) = "FALSE" Then Exit Sub
+
+    SetupDiagnosticsSheet
+
+    Dim ws As Worksheet: Set ws = ThisWorkbook.Worksheets(SH_DIAG)
+    Dim nextRow As Long
+    nextRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row + 1
+    If nextRow < 2 Then nextRow = 2
+
+    Dim i As Long, c As Range, rg As Range, v As Variant
+    Dim etype As String, sampleText As String
+    For i = LBound(rngs) To UBound(rngs)
+        If TypeName(rngs(i)) = "Range" Then
+            Set rg = rngs(i)
+            For Each c In rg.Cells
+                v = c.Value
+                etype = ""
+                sampleText = ""
+                If IsError(v) Then
+                    etype = "ERROR"
+                    sampleText = c.Text
+                ElseIf VarType(v) = vbString Then
+                    sampleText = CStr(v)
+                    If InStr(1, sampleText, "#N/A", vbTextCompare) > 0 Or _
+                       InStr(1, sampleText, "Invalid", vbTextCompare) > 0 Or _
+                       InStr(1, sampleText, "Not Applicable", vbTextCompare) > 0 Or _
+                       InStr(1, sampleText, "Authorization", vbTextCompare) > 0 Or _
+                       InStr(1, sampleText, "Requesting Data", vbTextCompare) > 0 Then
+                        etype = "BBG_NA"
+                    End If
+                End If
+                If etype <> "" Then
+                    ws.Cells(nextRow, 1).Value = Now()
+                    ws.Cells(nextRow, 2).Value = stepName
+                    ws.Cells(nextRow, 3).Value = c.Worksheet.Name
+                    ws.Cells(nextRow, 4).Value = c.Address(False, False)
+                    ws.Cells(nextRow, 5).Value = etype
+                    ws.Cells(nextRow, 6).Value = Left$(sampleText, 60)
+                    nextRow = nextRow + 1
+                End If
+            Next c
+        End If
+    Next i
+End Sub
+
+
+' =============================================================================
+' SHEET LAYOUT SETUP  (idempotent header writers; data preserved)
+' =============================================================================
+
+Private Sub SetupExtendedConfig(ws As Worksheet)
+    ws.Range("A1").Value = "PNL Explainer - Config"
+    SetIfBlank ws, "A4", "T0 date":           SetIfBlank ws, CFG_T0_DATE, ""
+    SetIfBlank ws, "A5", "T1 date (as-of)":   SetIfBlank ws, CFG_T1_DATE, ""
+    SetIfBlank ws, "A6", "Date mode":         SetIfBlank ws, "B6", "MANUAL"
+    SetIfBlank ws, "A8", "HTC INVTYPE":       SetIfBlank ws, CFG_HTC_PORTS, "H"
+    SetIfBlank ws, "A9", "Sell INVTYPE":      SetIfBlank ws, CFG_SELL_PORTS, "A,T"
+    SetIfBlank ws, "A13", "OPICS server/DSN": SetIfBlank ws, CFG_DSN, ""
+    SetIfBlank ws, "A14", "OPICS UID":        SetIfBlank ws, CFG_UID, ""
+    SetIfBlank ws, "A15", "ISIN SECIDTYPE":   SetIfBlank ws, CFG_ISIN_TYPE, "4"
+    SetIfBlank ws, "A20", "Spread framework": SetIfBlank ws, CFG_SPREAD_FRAMEWORK, "I"
+    SetIfBlank ws, "A37", "Base CCY":         SetIfBlank ws, CFG_BASE_CCY, "EUR"
+    SetIfBlank ws, "A38", "FX fix source":    SetIfBlank ws, CFG_FX_FIX_SOURCE, "BGN"
+    SetIfBlank ws, "A39", "Fut px field":     SetIfBlank ws, CFG_FUT_PRICE_FIELD, "PX_LAST"
+    SetIfBlank ws, "A40", "BBG stall timeout (s)": SetIfBlank ws, CFG_BBG_TIMEOUT, "120"
+    SetIfBlank ws, "A41", "YearsLeft basis":  SetIfBlank ws, CFG_YEARSLEFT_BASIS, "T1"
+    SetIfBlank ws, "A42", "Curve source":     SetIfBlank ws, CFG_CURVE_SOURCE, "BBG"
+    SetIfBlank ws, "A43", "Funding source":   SetIfBlank ws, CFG_FUNDING_SOURCE, "BBG"
+    SetIfBlank ws, "A44", "Actual PnL source": SetIfBlank ws, CFG_ACTUAL_PNL_SOURCE, "PROXY"
+    SetIfBlank ws, "A45", "Diagnostics":      SetIfBlank ws, CFG_DIAGNOSTICS_ENABLED, "TRUE"
+    SetIfBlank ws, "A47", "T0 bonds per batch": SetIfBlank ws, CFG_T0_BATCH, "100"
+End Sub
+
+Private Sub SetIfBlank(ws As Worksheet, addr As String, val As Variant)
+    If CleanText(ws.Range(addr).Value) = "" Then ws.Range(addr).Value = val
+End Sub
+
+' Curve sheet: tenor labels/years and ticker columns.  Tickers themselves should
+' live in a CurveMap (left of each block); only header scaffolding is set here.
+Private Sub SetupCurvesLayout(ws As Worksheet)
+    ws.Range("A1").Value = "OIS / Gov / Swap Curves"
+    ws.Range("A6").Value = "Tenor"
+    ws.Range("B6").Value = "Years"
+    ' EUR/USD/GBP year scaffolding if blank
+    Dim yrs As Variant: yrs = Array(0.0833, 0.25, 0.5, 1, 2, 3, 5, 7, 10, 15, 20, 30, 40)
+    Dim i As Long
+    For i = 0 To UBound(yrs)
+        SetIfBlank ws, "B" & (CURVE_FIRST_ROW + i), yrs(i)
+        SetIfBlank ws, "S" & (CURVE_FIRST_ROW + i), yrs(i)
+        SetIfBlank ws, "AJ" & (CURVE_FIRST_ROW + i), yrs(i)
+    Next i
+End Sub
+
+Private Sub SetupBondsFinalHeaders(ws As Worksheet)
+    ws.Range("A1").Value = "Bonds"
+    Dim h As Variant
+    h = Array("ISIN", "Name", "CCY", "Coupon_Dec", "CouponFreq", "MaturityDate", "Notional", _
+              "AvgCost", "EntryDate", "Portfolio", "AcctgCat", "DaysLeft", "_", "FundingRate", "Branch", _
+              "OIS_T0", "OIS_T1", "DF_T0", "DF_T1", "FX_T1", "FX_T0", "_", "DirtyPx_T1", "_", "YTM_T1", _
+              "ModDur", "Convexity", "_", "_", "CleanPx_T0", "DirtyPx_T0", "YTM_T0", "ZSprd_T0", "ASW_T0", "_", _
+              "_", "_", "BookVal_EUR", "ISpread_T1", "ISpread_T0", "GSpread_T1", "GSpread_T0", "_", "BBG_Ticker", "Ticker_Status", _
+              "OAS_T1", "OAS_T0", "DeltaOAS", "DV01_Unit", "_", "OAS_Dur", "_", "_", "_", "_", _
+              "Gov_T1", "Gov_T0", "Swap_T1", "Swap_T0", "g_T1", "g_T0", "g_T1bp", "_", "q_T1", "q_T0", _
+              "Delta_q_bp", "_", "Delta_i", "PositionSide", "FundTkr", "FundRate_T1", "FundRate_T0", "_", "SwapLink", "FutLink")
+    Dim i As Long
+    For i = LBound(h) To UBound(h)
+        ws.Cells(4, i + 1).Value = h(i)
+    Next i
+    ws.Range("BX4:CG4").Value = Array( _
+        "BBG_Cand_ISIN", _
+        "BBG_Cand_slashISIN", _
+        "BBG_Cand_Corp", _
+        "BBG_Cand_BVAL_Corp", _
+        "BBG_Cand_BGN_Corp", _
+        "BBG_Cand_Govt", _
+        "BBG_Cand_BVAL_Govt", _
+        "BBG_Cand_BGN_Govt", _
+        "BBG_Cand_Mtge", _
+        "BBG_Cand_MMkt" _
+    )
+
+    ws.Range("BX4:CG4").Font.Bold = True
+    ws.Columns("BX:CG").Hidden = True
+End Sub
+
+Private Sub SetupFuturesFinalHeaders(ws As Worksheet)
+    ws.Range("A1").Value = "Futures"
+    Dim h As Variant
+    h = Array("ContractCode", "Exchange", "CCY", "Contracts", "FaceValue", "DelivDate", "CTD_ISIN", "CTD_CF", _
+              "Portfolio", "LinkedISIN", "AvgEntryPx", "DaysToDeliv", "FX_T1", "FutPx_T1", "_", "_", "FutPx_T0", _
+              "_", "_", "_", "_", "BBG_Ticker", "_", "_", "_", "_", "CTD_Ticker", "CTD_DV01", "ConvFactor", "HedgeUnitDV01", _
+              "_", "_", "_", "_", "ImpliedRepo", "NetBasis", "GrossBasis", "Status")
+    Dim i As Long
+    For i = LBound(h) To UBound(h)
+        ws.Cells(4, i + 1).Value = h(i)
+    Next i
+    ws.Range("A4:AI4").Font.Bold = True
+End Sub
+
+Private Sub SetupSwapsFinalHeaders(ws As Worksheet)
+    ws.Range("A1").Value = "Swaps"
+    Dim h As Variant
+    h = Array("DealID", "Ccy", "Notional", "FixedRate", "FloatIndex", "FloatSpread", "StartDate", "EndDate", _
+              "PayFixed", "Portfolio", "LinkedISIN", "Cpty", "_", "YearFrac", "OIS_T1", "OIS_T0", "DF_T1", "DF_T0", _
+              "Annuity_T1", "Annuity_T0", "FX", "PV_T1", "PV_T0", "_", "Status", "PnL_Source", "_", "PnL", "_", "_", "_", "AF_Status")
+    Dim i As Long
+    For i = LBound(h) To UBound(h)
+        ws.Cells(4, i + 1).Value = h(i)
+    Next i
+    ws.Range("A4:AF4").Font.Bold = True
+End Sub
+
+Public Sub Debug_Dump_T0_BDH_Formulas()
+
+    Dim wsDiag As Worksheet
+    Dim nextRow As Long
+
+    SetupDiagnosticsSheet
+    Set wsDiag = ThisWorkbook.Worksheets(SH_DIAG)
+
+    wsDiag.Cells.ClearContents
+    wsDiag.Range("A1:E1").Value = Array("Timestamp", "Sheet", "Cell", "Displayed_Text", "FormulaR1C1")
+    wsDiag.Range("A1:E1").Font.Bold = True
+
+    nextRow = 2
+
+    DumpFormulaRange ThisWorkbook.Worksheets(SH_OIS).Range("A51:A112,D51:D112,G51:G112,R51:R112,U51:U112,Y51:Y112,AI51:AI112,AL51:AL112,AO51:AO112"), wsDiag, nextRow
+
+    DumpFormulaRange ThisWorkbook.Worksheets(SH_BONDS).Range( _
+        "U" & DATA_ROW & ":U" & CStr(DATA_ROW + N_BOND_ROWS - 1) & "," & _
+        "AD" & DATA_ROW & ":AH" & CStr(DATA_ROW + N_BOND_ROWS - 1) & "," & _
+        "AU" & DATA_ROW & ":AU" & CStr(DATA_ROW + N_BOND_ROWS - 1) & "," & _
+        "BT" & DATA_ROW & ":BT" & CStr(DATA_ROW + N_BOND_ROWS - 1)), _
+        wsDiag, nextRow
+
+    DumpFormulaRange ThisWorkbook.Worksheets(SH_FUTURES).Range( _
+        "Q" & DATA_ROW & ":Q" & CStr(DATA_ROW + N_FUT_ROWS - 1)), _
+        wsDiag, nextRow
+
+    MsgBox "BDH formulas dumped to Diagnostics.", vbInformation
+
+End Sub
+
+
+Private Sub DumpFormulaRange(ByVal rng As Range, ByVal wsDiag As Worksheet, ByRef nextRow As Long)
+
+    Dim c As Range
+    Dim a As Range
+
+    For Each a In rng.Areas
+        For Each c In a.Cells
+
+            If c.HasFormula Then
+                wsDiag.Cells(nextRow, 1).Value = Now()
+                wsDiag.Cells(nextRow, 2).Value = c.Worksheet.Name
+                wsDiag.Cells(nextRow, 3).Value = c.Address(False, False)
+                wsDiag.Cells(nextRow, 4).Value = c.Text
+                wsDiag.Cells(nextRow, 5).Value = c.FormulaR1C1
+                nextRow = nextRow + 1
+            End If
+
+        Next c
+    Next a
+
+End Sub
