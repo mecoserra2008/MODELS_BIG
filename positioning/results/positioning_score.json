@@ -1,0 +1,107 @@
+{
+  "config": {
+    "instruments": [
+      "TU",
+      "FV",
+      "TY",
+      "TN",
+      "US",
+      "UB"
+    ],
+    "scoring_categories": [
+      "lev_money",
+      "asset_mgr",
+      "dealer"
+    ],
+    "train_end": "2019-12-31",
+    "z_lookback_long_weeks": 156,
+    "forward_horizon_weeks": 4
+  },
+  "latest": {
+    "as_of": "2026-06-30",
+    "composite_z": 2.512970465189984,
+    "percentile": 0.9102564102564102,
+    "equal_weight_z": 2.4243811365711787,
+    "category_level_z": {
+      "lev_money": -0.12756851494697646,
+      "asset_mgr": 1.2267304055637633
+    },
+    "curve_z": 1.3530008287770008,
+    "concentration_z": 1.707387103396462,
+    "cash_z": 1.8502816228034527,
+    "stance": -1,
+    "stance_text": "short duration (fade crowded longs)",
+    "p_selloff_next_4w": 0.43759029205269045,
+    "pca_explained_var": [
+      0.3378139792651291,
+      0.27712949341253773
+    ]
+  },
+  "pca": {
+    "explained_variance_ratio": [
+      0.3378139792651291,
+      0.27712949341253773
+    ],
+    "loadings": {
+      "PC1": {
+        "lev_money_level_z": 0.5035,
+        "lev_money_flow_z": 0.155,
+        "asset_mgr_level_z": -0.4716,
+        "asset_mgr_flow_z": -0.0676,
+        "curve_z": 0.4078,
+        "conc_z": 0.3316,
+        "cash_z": -0.4682
+      },
+      "PC2": {
+        "lev_money_level_z": -0.1778,
+        "lev_money_flow_z": -0.5667,
+        "asset_mgr_level_z": 0.2299,
+        "asset_mgr_flow_z": 0.608,
+        "curve_z": 0.2234,
+        "conc_z": 0.301,
+        "cash_z": -0.2902
+      }
+    },
+    "feature_names": [
+      "lev_money_level_z",
+      "lev_money_flow_z",
+      "asset_mgr_level_z",
+      "asset_mgr_flow_z",
+      "curve_z",
+      "conc_z",
+      "cash_z"
+    ]
+  },
+  "predictive": {
+    "metrics": {
+      "n_oos": 376,
+      "base_rate": 0.5212765957446809,
+      "auc": 0.5615079365079365,
+      "log_loss": 0.6855524706082026,
+      "brier": 0.24626482286552073,
+      "horizon_note": "OOS via expanding-window walk-forward"
+    },
+    "coefficients": {
+      "composite": 0.1078,
+      "composite_chg": -0.2706,
+      "extreme": -0.0537,
+      "y_level_z": -0.0849,
+      "slope": -0.3406,
+      "realized_vol": -0.188
+    },
+    "latest_p_selloff": 0.43759029205269045
+  },
+  "latest_category_net_dv01_z": {
+    "asset_mgr": 582316650.7779409,
+    "dealer": -161606779.61046398,
+    "lev_money": -444132499.3858321
+  },
+  "latest_instrument_net_dv01_usd_per_bp": {
+    "FV": -1929527.7451605797,
+    "TN": 5088439.022070445,
+    "TU": -8201352.619130336,
+    "TY": -1264926.0903664231,
+    "UB": -4870395.878443778,
+    "US": -12244864.907324515
+  }
+}

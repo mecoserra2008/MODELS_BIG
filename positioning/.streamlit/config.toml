@@ -1,0 +1,12 @@
+# BIG-branded dark desk theme. The app also injects per-mode CSS (app/theme.py) and
+# supports a light/dark toggle at runtime; this is the base/default.
+[theme]
+base = "dark"
+primaryColor = "#FF6002"          # BIG brand orange (sampled from Logo-BIG.png)
+backgroundColor = "#0d0d0d"        # page plane (dark)
+secondaryBackgroundColor = "#1a1a19"  # chart/card surface (dark)
+textColor = "#ffffff"
+font = "sans serif"
+
+[server]
+headless = true

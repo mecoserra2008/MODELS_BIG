@@ -4,6 +4,9 @@ __pycache__/
 *.pyc
 data/raw/
 data/factors/
+# positioning app: regenerable data caches (CFTC/NYFed/FRED/news pulled live)
+positioning/data/raw/
+.streamlit/secrets.toml
 UK/*_executed.ipynb
 UK/*.aux
 UK/*.log
