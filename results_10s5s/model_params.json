@@ -1,0 +1,46 @@
+{
+  "US": {
+    "lt_params": {
+      "sigma2.irregular": 1.5151439872127788e-05,
+      "sigma2.level": 0.0003624849700705426,
+      "sigma2.trend": 1.4871659349159703e-12
+    },
+    "window": 60,
+    "k_entry": 2.0,
+    "k_exit": 0.5,
+    "tvp_delta": 1e-05
+  },
+  "EU": {
+    "lt_params": {
+      "sigma2.irregular": 1.6560031668836323e-09,
+      "sigma2.level": 0.0002813776787825123,
+      "sigma2.trend": 2.0905495326330955e-11
+    },
+    "window": 60,
+    "k_entry": 2.0,
+    "k_exit": 0.5,
+    "tvp_delta": 1e-05
+  },
+  "UK": {
+    "lt_params": {
+      "sigma2.irregular": 1.7971994247148342e-09,
+      "sigma2.level": 0.0002614882000268226,
+      "sigma2.trend": 1.8886264221170813e-11
+    },
+    "window": 60,
+    "k_entry": 2.0,
+    "k_exit": 0.5,
+    "tvp_delta": 1e-05
+  },
+  "CA": {
+    "lt_params": {
+      "sigma2.irregular": 1.3179070818789422e-05,
+      "sigma2.level": 0.0002661738035192533,
+      "sigma2.trend": 2.4699457662418884e-11
+    },
+    "window": 60,
+    "k_entry": 2.0,
+    "k_exit": 0.5,
+    "tvp_delta": 1e-05
+  }
+}

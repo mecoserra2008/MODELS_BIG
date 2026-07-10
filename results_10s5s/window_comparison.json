@@ -1,0 +1,290 @@
+{
+  "60": {
+    "per_market": {
+      "US": {
+        "trades_per_year": 4.61,
+        "pct_in_position": 44.1,
+        "avg_hold_days": 24.9,
+        "sharpe": 0.088,
+        "hit_rate": 0.419,
+        "max_drawdown_bp": -94.5,
+        "n_entries": 76
+      },
+      "EU": {
+        "trades_per_year": 4.43,
+        "pct_in_position": 42.3,
+        "avg_hold_days": 24.9,
+        "sharpe": -0.154,
+        "hit_rate": 0.493,
+        "max_drawdown_bp": -96.6,
+        "n_entries": 73
+      },
+      "UK": {
+        "trades_per_year": 4.31,
+        "pct_in_position": 45.6,
+        "avg_hold_days": 27.6,
+        "sharpe": -0.162,
+        "hit_rate": 0.484,
+        "max_drawdown_bp": -92.4,
+        "n_entries": 71
+      },
+      "CA": {
+        "trades_per_year": 4.49,
+        "pct_in_position": 47.4,
+        "avg_hold_days": 27.6,
+        "sharpe": -0.152,
+        "hit_rate": 0.379,
+        "max_drawdown_bp": -85.0,
+        "n_entries": 74
+      }
+    },
+    "average": {
+      "trades_per_year": 4.46,
+      "pct_in_position": 44.85,
+      "avg_hold_days": 26.25,
+      "sharpe": -0.095,
+      "hit_rate": 0.444,
+      "max_drawdown_bp": -92.125
+    }
+  },
+  "90": {
+    "per_market": {
+      "US": {
+        "trades_per_year": 3.64,
+        "pct_in_position": 47.9,
+        "avg_hold_days": 34.4,
+        "sharpe": 0.145,
+        "hit_rate": 0.419,
+        "max_drawdown_bp": -111.0,
+        "n_entries": 60
+      },
+      "EU": {
+        "trades_per_year": 3.52,
+        "pct_in_position": 46.5,
+        "avg_hold_days": 34.5,
+        "sharpe": 0.045,
+        "hit_rate": 0.494,
+        "max_drawdown_bp": -110.9,
+        "n_entries": 58
+      },
+      "UK": {
+        "trades_per_year": 3.03,
+        "pct_in_position": 47.8,
+        "avg_hold_days": 41.2,
+        "sharpe": -0.226,
+        "hit_rate": 0.475,
+        "max_drawdown_bp": -134.5,
+        "n_entries": 50
+      },
+      "CA": {
+        "trades_per_year": 2.97,
+        "pct_in_position": 52.0,
+        "avg_hold_days": 45.6,
+        "sharpe": -0.264,
+        "hit_rate": 0.375,
+        "max_drawdown_bp": -140.0,
+        "n_entries": 49
+      }
+    },
+    "average": {
+      "trades_per_year": 3.29,
+      "pct_in_position": 48.55,
+      "avg_hold_days": 38.925,
+      "sharpe": -0.075,
+      "hit_rate": 0.441,
+      "max_drawdown_bp": -124.1
+    }
+  },
+  "120": {
+    "per_market": {
+      "US": {
+        "trades_per_year": 2.85,
+        "pct_in_position": 48.2,
+        "avg_hold_days": 44.1,
+        "sharpe": 0.106,
+        "hit_rate": 0.423,
+        "max_drawdown_bp": -88.0,
+        "n_entries": 47
+      },
+      "EU": {
+        "trades_per_year": 2.43,
+        "pct_in_position": 45.3,
+        "avg_hold_days": 48.7,
+        "sharpe": 0.001,
+        "hit_rate": 0.485,
+        "max_drawdown_bp": -108.7,
+        "n_entries": 40
+      },
+      "UK": {
+        "trades_per_year": 2.3,
+        "pct_in_position": 48.9,
+        "avg_hold_days": 55.4,
+        "sharpe": -0.072,
+        "hit_rate": 0.473,
+        "max_drawdown_bp": -90.7,
+        "n_entries": 38
+      },
+      "CA": {
+        "trades_per_year": 2.24,
+        "pct_in_position": 53.7,
+        "avg_hold_days": 62.4,
+        "sharpe": -0.109,
+        "hit_rate": 0.376,
+        "max_drawdown_bp": -85.0,
+        "n_entries": 37
+      }
+    },
+    "average": {
+      "trades_per_year": 2.455,
+      "pct_in_position": 49.025,
+      "avg_hold_days": 52.65,
+      "sharpe": -0.018,
+      "hit_rate": 0.439,
+      "max_drawdown_bp": -93.1
+    }
+  },
+  "180": {
+    "per_market": {
+      "US": {
+        "trades_per_year": 1.76,
+        "pct_in_position": 48.2,
+        "avg_hold_days": 71.5,
+        "sharpe": -0.059,
+        "hit_rate": 0.417,
+        "max_drawdown_bp": -123.0,
+        "n_entries": 29
+      },
+      "EU": {
+        "trades_per_year": 1.76,
+        "pct_in_position": 46.5,
+        "avg_hold_days": 69.1,
+        "sharpe": 0.021,
+        "hit_rate": 0.48,
+        "max_drawdown_bp": -81.0,
+        "n_entries": 29
+      },
+      "UK": {
+        "trades_per_year": 1.76,
+        "pct_in_position": 48.1,
+        "avg_hold_days": 71.3,
+        "sharpe": 0.178,
+        "hit_rate": 0.477,
+        "max_drawdown_bp": -78.5,
+        "n_entries": 29
+      },
+      "CA": {
+        "trades_per_year": 1.52,
+        "pct_in_position": 49.8,
+        "avg_hold_days": 85.8,
+        "sharpe": -0.148,
+        "hit_rate": 0.369,
+        "max_drawdown_bp": -78.0,
+        "n_entries": 25
+      }
+    },
+    "average": {
+      "trades_per_year": 1.7,
+      "pct_in_position": 48.15,
+      "avg_hold_days": 74.425,
+      "sharpe": -0.002,
+      "hit_rate": 0.436,
+      "max_drawdown_bp": -90.125
+    }
+  },
+  "252": {
+    "per_market": {
+      "US": {
+        "trades_per_year": 1.33,
+        "pct_in_position": 50.5,
+        "avg_hold_days": 98.9,
+        "sharpe": 0.044,
+        "hit_rate": 0.405,
+        "max_drawdown_bp": -105.0,
+        "n_entries": 22
+      },
+      "EU": {
+        "trades_per_year": 1.21,
+        "pct_in_position": 49.8,
+        "avg_hold_days": 107.2,
+        "sharpe": -0.081,
+        "hit_rate": 0.474,
+        "max_drawdown_bp": -87.4,
+        "n_entries": 20
+      },
+      "UK": {
+        "trades_per_year": 1.33,
+        "pct_in_position": 45.2,
+        "avg_hold_days": 88.5,
+        "sharpe": 0.129,
+        "hit_rate": 0.475,
+        "max_drawdown_bp": -71.2,
+        "n_entries": 22
+      },
+      "CA": {
+        "trades_per_year": 1.09,
+        "pct_in_position": 55.5,
+        "avg_hold_days": 132.7,
+        "sharpe": -0.139,
+        "hit_rate": 0.361,
+        "max_drawdown_bp": -86.0,
+        "n_entries": 18
+      }
+    },
+    "average": {
+      "trades_per_year": 1.24,
+      "pct_in_position": 50.25,
+      "avg_hold_days": 106.825,
+      "sharpe": -0.012,
+      "hit_rate": 0.429,
+      "max_drawdown_bp": -87.4
+    }
+  },
+  "504": {
+    "per_market": {
+      "US": {
+        "trades_per_year": 0.79,
+        "pct_in_position": 49.4,
+        "avg_hold_days": 163.4,
+        "sharpe": 0.05,
+        "hit_rate": 0.409,
+        "max_drawdown_bp": -73.0,
+        "n_entries": 13
+      },
+      "EU": {
+        "trades_per_year": 0.55,
+        "pct_in_position": 37.2,
+        "avg_hold_days": 177.7,
+        "sharpe": -0.103,
+        "hit_rate": 0.465,
+        "max_drawdown_bp": -79.1,
+        "n_entries": 9
+      },
+      "UK": {
+        "trades_per_year": 0.79,
+        "pct_in_position": 43.8,
+        "avg_hold_days": 144.8,
+        "sharpe": 0.279,
+        "hit_rate": 0.485,
+        "max_drawdown_bp": -46.3,
+        "n_entries": 13
+      },
+      "CA": {
+        "trades_per_year": 0.61,
+        "pct_in_position": 51.5,
+        "avg_hold_days": 221.7,
+        "sharpe": -0.01,
+        "hit_rate": 0.367,
+        "max_drawdown_bp": -64.0,
+        "n_entries": 10
+      }
+    },
+    "average": {
+      "trades_per_year": 0.685,
+      "pct_in_position": 45.475,
+      "avg_hold_days": 176.9,
+      "sharpe": 0.054,
+      "hit_rate": 0.431,
+      "max_drawdown_bp": -65.6
+    }
+  }
+}

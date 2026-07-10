@@ -494,6 +494,122 @@ def fetch_eu_yields(
 
 
 # ---------------------------------------------------------------------------
+# Per-country Euro-area government bonds (IT / FR / ES) — stooq daily CSV
+# ---------------------------------------------------------------------------
+
+# stooq publishes daily government-bond yields as free CSV. The symbol format
+# is not officially documented and has varied, so we try a few candidate
+# spellings per (country, maturity) and keep the first that returns numeric
+# data. NOTE: this endpoint is unofficial and per-country 5Y history/coverage
+# is uneven — a leg that fails to resolve is skipped with a warning (the market
+# is then dropped downstream) rather than aborting the run. For production, a
+# paid feed (Bloomberg / Refinitiv) is the recommended upgrade.
+EGB_COUNTRIES = {
+    "IT": "it",  # Italy — BTP
+    "FR": "fr",  # France — OAT
+    "ES": "es",  # Spain — Bonos
+}
+
+
+def _stooq_symbol_candidates(cc: str, maturity: int) -> list[str]:
+    """Candidate stooq yield symbols for a country code / maturity in years."""
+    return [
+        f"{maturity}{cc}y.b",   # e.g. 10ity.b
+        f"{maturity}y{cc}.b",   # e.g. 10yit.b
+        f"{maturity}{cc}by.b",  # e.g. 10itby.b
+    ]
+
+
+def _fetch_stooq_series(symbol: str, timeout: int = 60) -> pd.Series | None:
+    """Download one stooq daily series; return Close as a Series or None."""
+    url = f"https://stooq.com/q/d/l/?s={symbol}&i=d"
+    try:
+        resp = requests.get(url, timeout=timeout)
+        resp.raise_for_status()
+    except Exception as e:  # network / HTTP error
+        print(f"    stooq request failed for {symbol}: {e}")
+        return None
+
+    text = resp.text.strip()
+    # stooq returns the literal "No data" (or an HTML page) for bad symbols.
+    if not text or "No data" in text or not text.lower().startswith("date"):
+        return None
+
+    try:
+        raw = pd.read_csv(io.StringIO(text))
+    except Exception:
+        return None
+    if "Date" not in raw.columns or "Close" not in raw.columns:
+        return None
+
+    s = pd.Series(
+        pd.to_numeric(raw["Close"], errors="coerce").values,
+        index=pd.to_datetime(raw["Date"]),
+    ).dropna()
+    return s if len(s) > 0 else None
+
+
+def fetch_egb_yields(
+    start_date: str = "2000-01-01",
+    end_date: str = "2026-04-30",
+    countries: dict[str, str] | None = None,
+    maturities: list[int] = [5, 10],
+    cache_path: str | None = None,
+    force_download: bool = False,
+) -> pd.DataFrame:
+    """
+    Download per-country euro-area government bond yields (Italy BTP, France
+    OAT, Spain Bonos) at the 5Y and 10Y tenors from stooq daily CSV.
+
+    Returns a DataFrame with the {CC}_{TENOR} convention, e.g. columns
+    IT_5Y, IT_10Y, FR_5Y, FR_10Y, ES_5Y, ES_10Y. Legs whose stooq symbol
+    cannot be resolved are omitted (a warning is printed); downstream code
+    should drop any market missing a leg.
+    """
+    if countries is None:
+        countries = EGB_COUNTRIES
+    if cache_path is None:
+        cache_path = RAW_DIR / "egb_yields.csv"
+    else:
+        cache_path = Path(cache_path)
+
+    if cache_path.exists() and not force_download:
+        df = pd.read_csv(cache_path, index_col=0, parse_dates=True)
+        return df.loc[start_date:end_date]
+
+    import time
+
+    series_data: dict[str, pd.Series] = {}
+    for prefix, cc in countries.items():
+        for m in maturities:
+            label = f"{prefix}_{m}Y"
+            found = None
+            for symbol in _stooq_symbol_candidates(cc, m):
+                print(f"  Fetching stooq {symbol} ({label})...")
+                found = _fetch_stooq_series(symbol)
+                if found is not None:
+                    series_data[label] = found
+                    break
+                time.sleep(0.5)
+            if found is None:
+                print(f"    WARNING: no stooq data for {label} — leg skipped")
+
+    if not series_data:
+        print("  WARNING: fetch_egb_yields resolved no series; returning empty frame")
+        return pd.DataFrame()
+
+    df = pd.DataFrame(series_data)
+    df.index.name = "Date"
+    df = df.sort_index()
+    df = df.loc[start_date:end_date]
+
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(cache_path)
+    print(f"EGB yields cached to {cache_path} — shape {df.shape}")
+    return df
+
+
+# ---------------------------------------------------------------------------
 # Alignment
 # ---------------------------------------------------------------------------
 

@@ -1,0 +1,125 @@
+{
+  "config": {
+    "window": 60,
+    "k_entry": 2.0,
+    "k_exit": 0.5,
+    "train_end": "2022-12-31",
+    "structural_dv01": 100000.0
+  },
+  "markets": {
+    "US": {
+      "label": "US Treasuries",
+      "half_life_days": 18.497042886550798,
+      "z_today": -1.398472902917472,
+      "signal_today": 1,
+      "beta_today": 0.9277578018503152,
+      "sharpe": 0.08814793412134748,
+      "hit_rate": 0.41899736147757255,
+      "max_drawdown_bp": -94.50000000000007,
+      "avg_hold_days": 24.94736842105263,
+      "n_trades": 153,
+      "leg_sizing": {
+        "notional_5y": 22405328.0,
+        "notional_10y": -12516455.0,
+        "dv01_neutral_hedge_ratio": 1.79,
+        "empirical_beta": 0.928
+      }
+    },
+    "EU": {
+      "label": "Bund (EU AAA)",
+      "half_life_days": 22.68059412591518,
+      "z_today": -0.3233551606868212,
+      "signal_today": 0,
+      "beta_today": 1.023437398740213,
+      "sharpe": -0.15411606722591004,
+      "hit_rate": 0.4928571428571429,
+      "max_drawdown_bp": -96.60385812638305,
+      "avg_hold_days": 24.931506849315067,
+      "n_trades": 146,
+      "leg_sizing": {
+        "notional_5y": 21458139.0,
+        "notional_10y": -11628122.0,
+        "dv01_neutral_hedge_ratio": 1.845,
+        "empirical_beta": 1.023
+      }
+    },
+    "UK": {
+      "label": "UK Gilts",
+      "half_life_days": 26.930518871732286,
+      "z_today": -0.05483354419475721,
+      "signal_today": 0,
+      "beta_today": 1.0371948510249458,
+      "sharpe": -0.16185251255581962,
+      "hit_rate": 0.4844467108618052,
+      "max_drawdown_bp": -92.38628226450574,
+      "avg_hold_days": 27.619718309859156,
+      "n_trades": 143,
+      "leg_sizing": {
+        "notional_5y": 22421131.0,
+        "notional_10y": -12724680.0,
+        "dv01_neutral_hedge_ratio": 1.762,
+        "empirical_beta": 1.037
+      }
+    },
+    "CA": {
+      "label": "Canada",
+      "half_life_days": 22.009083825164943,
+      "z_today": 0.4959620512141261,
+      "signal_today": 0,
+      "beta_today": 0.962406606609387,
+      "sharpe": -0.15247619915345625,
+      "hit_rate": 0.37910740559097594,
+      "max_drawdown_bp": -85.00000000000041,
+      "avg_hold_days": 27.554054054054053,
+      "n_trades": 149,
+      "leg_sizing": {
+        "notional_5y": 21692581.0,
+        "notional_10y": -11868496.0,
+        "dv01_neutral_hedge_ratio": 1.828,
+        "empirical_beta": 0.962
+      }
+    }
+  },
+  "duration_allocation": [
+    {
+      "market": "US",
+      "signal": 1,
+      "z": -1.4,
+      "dv01_5y": 16875.0,
+      "dv01_10y": 8125.0,
+      "dv01_total": 25000.0,
+      "tilt_leg": "5Y",
+      "note": "steepener"
+    },
+    {
+      "market": "EU",
+      "signal": 0,
+      "z": -0.32,
+      "dv01_5y": 12500.0,
+      "dv01_10y": 12500.0,
+      "dv01_total": 25000.0,
+      "tilt_leg": "even",
+      "note": "flat"
+    },
+    {
+      "market": "UK",
+      "signal": 0,
+      "z": -0.05,
+      "dv01_5y": 12500.0,
+      "dv01_10y": 12500.0,
+      "dv01_total": 25000.0,
+      "tilt_leg": "even",
+      "note": "flat"
+    },
+    {
+      "market": "CA",
+      "signal": 0,
+      "z": 0.5,
+      "dv01_5y": 12500.0,
+      "dv01_10y": 12500.0,
+      "dv01_total": 25000.0,
+      "tilt_leg": "even",
+      "note": "flat"
+    }
+  ]
+}
