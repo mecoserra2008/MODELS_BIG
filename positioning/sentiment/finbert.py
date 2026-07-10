@@ -18,6 +18,7 @@ lexicon (ecb_analysis/lexicon), already inverted to the bond convention.
 from __future__ import annotations
 
 import functools
+import os
 import re
 import sys
 from pathlib import Path
@@ -61,7 +62,15 @@ def _direction(headline: str) -> int:
 
 @functools.lru_cache(maxsize=1)
 def _pipeline():
-    """Load FinBERT once. Returns a callable(list[str]) -> list[dict], or None on failure."""
+    """Load FinBERT once. Returns a callable(list[str]) -> list[dict], or None.
+
+    Opt-in only: unless POSITIONING_USE_FINBERT=1, we never import transformers. This
+    keeps the default path lexicon-based (matching Streamlit Cloud) and avoids Streamlit's
+    file-watcher enumerating transformers.models.* (which triggers a torchvision version
+    mismatch spam locally). Set the env var on a machine with torch/transformers to enable.
+    """
+    if os.environ.get("POSITIONING_USE_FINBERT") != "1":
+        return None
     try:
         import torch  # noqa: F401
         from transformers import (AutoModelForSequenceClassification, AutoTokenizer,

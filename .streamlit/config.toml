@@ -1,0 +1,8 @@
+# Repo-root Streamlit config (loaded when running `streamlit run ...` from the repo root).
+# fileWatcherType="none" stops Streamlit's module watcher from introspecting large libraries
+# (e.g. transformers.models.*), which otherwise triggers a torchvision version-mismatch flood
+# in this environment. No [theme] here — the positioning app injects its own CSS, and we don't
+# want to restyle the repo's other Streamlit apps.
+[server]
+fileWatcherType = "none"
+headless = true
