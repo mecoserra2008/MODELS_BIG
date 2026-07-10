@@ -84,9 +84,10 @@ def _lexicon_scorer():
         import lexicon  # type: ignore
 
         def score(text: str) -> float:
-            # score_segment returns [-7.5, +7.5]; hawkish(+) => bearish bonds, so invert
-            # to a bond-sentiment convention (dovish/easing => positive FI sentiment).
-            return float(np.clip(-lexicon.score_segment(text) / 7.5, -1.0, 1.0))
+            # score_segment returns [-7.5, +7.5] but per-token normalization compresses
+            # short headlines; scale so headline-level signals reach usable magnitude.
+            # hawkish(+) => bearish bonds, so invert to the bond convention.
+            return float(np.clip(-lexicon.score_segment(text) / 2.0, -1.0, 1.0))
         return score
     except Exception:
         return None

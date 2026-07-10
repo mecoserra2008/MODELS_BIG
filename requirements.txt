@@ -13,7 +13,7 @@ streamlit>=1.35.0
 plotly>=5.22.0
 scikit-learn>=1.4.0
 xgboost>=2.0.0
-# News & sentiment (positioning app): FinBERT headline scoring + RSS parsing
-transformers>=4.40.0
-torch>=2.0.0
-beautifulsoup4>=4.12.0
+# News & sentiment (positioning app): headline scoring runs on the built-in
+# bond-oriented finance lexicon (stdlib) — no heavy ML deps, so it deploys on
+# Streamlit Community Cloud. To use FinBERT instead, install `transformers` +
+# CPU-only `torch` on a host with >=2GB RAM; the app auto-detects and upgrades.
