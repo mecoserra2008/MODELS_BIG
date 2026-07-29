@@ -122,6 +122,10 @@ TRAIN_END = "2019-12-31"
 # Predictive overlay: forward horizon (weeks) and the yield proxy for the label.
 FORWARD_HORIZON_WEEKS = 4
 LABEL_YIELD = "DGS10"   # selloff = yield up over the horizon
+# Horizons for the historical conditional base-rate-at-extremes overlay (the honest
+# complement to the weak per-week logistic). Evidence: the contrarian read is stronger
+# and more reliable at 8-13w than at 4w, and asymmetric (works on the crowded-long side).
+CONDITIONAL_HORIZONS = (4, 8, 13)
 
 # Contrarian signal band thresholds on the composite z-index (with hysteresis).
 SIGNAL_K_ENTRY = 1.5

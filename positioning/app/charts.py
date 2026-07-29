@@ -104,6 +104,40 @@ def category_duration_fig(res, mode: str) -> go.Figure:
 
 
 # --------------------------------------------------------------------------- #
+# Step 3 — curve-crowding z (front minus long-end DV01; + = crowded steepener)
+# --------------------------------------------------------------------------- #
+def curve_crowding_fig(res, mode: str, k: float = 1.5) -> go.Figure:
+    """Per-category curve-crowding z + aggregate. Categories wear their hues; the
+    aggregate is a neutral ink emphasis line (blue↔purple fails CVD on dark), with
+    direct labels carrying identity."""
+    p = theme.pal(mode)
+    cc = res.curve_crowding
+    fig = go.Figure()
+    for c in SCORING_CATEGORIES:
+        if c not in cc.columns:
+            continue
+        s = cc[c].dropna()
+        fig.add_trace(go.Scatter(x=s.index, y=s.values, mode="lines",
+                      line=dict(color=p[c], width=1.4), name=CATEGORY_LABELS[c],
+                      hovertemplate="%{x|%Y-%m-%d}<br>z %{y:.2f}<extra></extra>"))
+        fig.add_annotation(x=s.index[-1], y=s.values[-1], text=CATEGORY_LABELS[c],
+                           showarrow=False, xanchor="left", xshift=6,
+                           font=dict(color=p[c], size=11))
+    agg = cc["aggregate_restd" if "aggregate_restd" in cc.columns else "aggregate"].dropna()
+    fig.add_trace(go.Scatter(x=agg.index, y=agg.values, mode="lines",
+                  line=dict(color=p["ink"], width=2.4), name="Aggregate (re-z)",
+                  hovertemplate="%{x|%Y-%m-%d}<br>z %{y:.2f}<extra></extra>"))
+    fig.add_annotation(x=agg.index[-1], y=agg.values[-1], text="Aggregate (re-z)",
+                       showarrow=False, xanchor="left", xshift=6,
+                       font=dict(color=p["ink"], size=11))
+    for kk in (k, -k):
+        fig.add_hline(y=kk, line=dict(color=p["muted"], width=1, dash="dash"))
+    fig.add_hline(y=0, line=dict(color=p["axis"], width=0.8))
+    return theme.plotly_layout(fig, mode, height=360,
+                               title="Curve-crowding z · + = crowded steepener, − = flattener")
+
+
+# --------------------------------------------------------------------------- #
 # Step 4 — feature panel z heatmap over time (diverging)
 # --------------------------------------------------------------------------- #
 def feature_heatmap(res, mode: str) -> go.Figure:
@@ -199,6 +233,33 @@ def calibration_fig(res, mode: str) -> go.Figure:
     fig.update_yaxes(range=[0, 1], title="realized")
     fig.update_layout(showlegend=False)
     return theme.plotly_layout(fig, mode, height=300, title="Calibration")
+
+
+def conditional_baserates_fig(res, mode: str) -> go.Figure:
+    """Honest headline overlay: historical contrarian hit rate at crowded extremes, by
+    horizon. Long side = P(selloff|crowded long); short side = P(rally|crowded short).
+    The asymmetry (long side works, short side ~coin-flip) is the real, interpretable read."""
+    p = theme.pal(mode)
+    cond = res.latest.get("conditional_base_rates", {})
+    fig = go.Figure()
+    if cond:
+        Hs = sorted(cond, key=int)
+        xs = [f"{h}w" for h in Hs]
+        p_long = [cond[h]["crowded_long"]["p_selloff"] for h in Hs]
+        p_short = [cond[h]["crowded_short"]["p_rally"] for h in Hs]
+        bp_long = [cond[h]["crowded_long"]["mean_bp"] for h in Hs]
+        fig.add_trace(go.Bar(x=xs, y=p_long, name="P(selloff | crowded LONG)",
+                      marker_color="#c00000",
+                      text=[f"{b:+.0f}bp" for b in bp_long], textposition="outside",
+                      hovertemplate="%{x}: %{y:.0%}<extra>crowded long</extra>"))
+        fig.add_trace(go.Bar(x=xs, y=p_short, name="P(rally | crowded SHORT)",
+                      marker_color="#2e7d32", opacity=0.65,
+                      hovertemplate="%{x}: %{y:.0%}<extra>crowded short</extra>"))
+        fig.add_hline(y=0.5, line=dict(color=p["muted"], width=1, dash="dash"))
+    fig.update_yaxes(range=[0, 1], title="historical hit rate")
+    fig.update_layout(barmode="group", legend=dict(orientation="h", y=1.12))
+    return theme.plotly_layout(fig, mode, height=300,
+                               title="Contrarian hit rate at crowded extremes (|z|>1.5)")
 
 
 def sentiment_series_fig(series, mode: str) -> go.Figure:

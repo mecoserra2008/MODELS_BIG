@@ -51,6 +51,28 @@ def curve_duration(fut_dv01: pd.DataFrame, category: str) -> pd.Series:
     return s.sort_index()
 
 
+def curve_crowding(fut_dv01: pd.DataFrame) -> pd.DataFrame:
+    """Per-category curve-crowding z-scores + their equal-weight aggregate.
+
+    Each scoring category's curve_duration (front-end minus long-end net DV01) is
+    causally z-scored over the long lookback. Positive = crowded front-end-long vs
+    long-end-short (steepener positioning); negative = flattener crowding.
+    Returns wide [date x (categories..., 'aggregate', 'aggregate_restd')]:
+    'aggregate' = mean of the category z's; 'aggregate_restd' = that mean re-z-scored
+    — the headline read. The two categories sit on opposite sides of the curve trade
+    (z correlation ~ -0.8), so the raw mean is compressed (std ~0.45, essentially
+    never past +/-1.5); re-standardizing the average is the house convention for
+    averaged z's (cf. equal_weight / composite above) and makes the +/-k regime
+    thresholds meaningful."""
+    cats = set(fut_dv01["category"])
+    cols = {cat: rolling_zscore(curve_duration(fut_dv01, cat), Z_LOOKBACK_LONG)
+            for cat in SCORING_CATEGORIES if cat in cats}
+    out = pd.DataFrame(cols).sort_index()
+    out["aggregate"] = out.mean(axis=1)
+    out["aggregate_restd"] = rolling_zscore(out["aggregate"], Z_LOOKBACK_LONG)
+    return out
+
+
 def concentration_tilt(fut_dv01: pd.DataFrame) -> pd.Series:
     """Market net top-4 concentration tilt = top4_long% - top4_short%, OI-weighted
     across instruments. Concentration is a market-level field (same for all
