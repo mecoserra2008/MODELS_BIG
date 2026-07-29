@@ -229,6 +229,15 @@ def steps(res, mode: str, k_entry: float) -> None:
               "typically sit on opposite sides.")
         st.plotly_chart(charts.category_duration_fig(res, mode), width='stretch',
                         key="catdur")
+        cw = res.latest.get("curve_crowding", {})
+        cwz = cw.get("aggregate_z_restd")
+        _note("<b>Curve crowding</b>: front-end (TU,FV) minus long-end (US,UB) net DV01, "
+              "z-scored per category, averaged, then re-z'd (the two categories offset, "
+              "so the raw mean is compressed). + = crowded steepener, − = flattener. "
+              f"Current regime: <b>{cw.get('regime', '?').replace('_', ' ')}</b> "
+              f"(aggregate re-z {f'{cwz:+.2f}' if cwz is not None else 'n/a'}).")
+        st.plotly_chart(charts.curve_crowding_fig(res, mode, k_entry), width='stretch',
+                        key="curvecrowd")
 
     with t[3]:
         _note(f"Causal rolling z-score / percentile ({Z_LOOKBACK_LONG}w) puts every series "
@@ -258,8 +267,24 @@ def steps(res, mode: str, k_entry: float) -> None:
         m = res.predictive.metrics
         _note("⚠️ <b>Weak edge — context only.</b> A calibrated logistic maps positioning to "
               f"P(selloff, next 4w). Walk-forward AUC {m['auc']:.2f}, Brier {m['brier']:.2f} "
-              f"(base rate {m['base_rate']:.2f}). Positioning is a strong <i>descriptive</i> "
-              "gauge but only a modest short-horizon predictor — do not trade this number alone.")
+              f"(base rate {m['base_rate']:.2f}, horizon-embargo purged). Positioning is a strong "
+              "<i>descriptive</i> gauge but only a modest short-horizon predictor — do not trade "
+              "this number alone.")
+        # Honest headline: the conditional base-rate-at-extremes read (stronger & interpretable).
+        reg = res.latest.get("regime_read", {})
+        cond = res.latest.get("conditional_base_rates", {})
+        if reg and reg.get("regime") != "neutral" and cond:
+            side = "selloff" if reg["regime"] == "crowded_long" else "rally"
+            key = "p_selloff" if reg["regime"] == "crowded_long" else "p_rally"
+            bits = " · ".join(
+                f"{h}w {cond[h]['crowded_long' if reg['regime']=='crowded_long' else 'crowded_short'][key]:.0%}"
+                for h in sorted(cond, key=int))
+            _note(f"📍 <b>Current regime: {reg['regime'].replace('_',' ')}</b> (composite z "
+                  f"{reg['composite_z']:+.2f}). Historically, when positioning was this stretched, "
+                  f"P({side} over next) — {bits}. The contrarian edge is asymmetric: it works on the "
+                  "crowded-long side and firms up at 8–13w; the crowded-short side is ~coin-flip.")
+        st.plotly_chart(charts.conditional_baserates_fig(res, mode), width='stretch',
+                        key="cond")
         c1, c2 = st.columns(2)
         with c1:
             st.plotly_chart(charts.forward_prob_fig(res, mode), width='stretch',

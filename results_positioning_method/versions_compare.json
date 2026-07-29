@@ -1,0 +1,101 @@
+{
+  "as_of": "2026-07-14",
+  "responsiveness": [
+    {
+      "version": "v0",
+      "name": "V0 Production (2x 3y-z + PCA)",
+      "bounded": false,
+      "latest": 0.272,
+      "first_flag": "2025-04-01",
+      "lead_weeks_vs_prod": 0,
+      "pct_time_extreme": 0.31,
+      "note": "baseline; unchanged"
+    },
+    {
+      "version": "v1",
+      "name": "V1 Kaiser-PCA (single-std, eigenvalue>1)",
+      "bounded": false,
+      "latest": -9.081,
+      "first_flag": "2024-06-04",
+      "lead_weeks_vs_prod": 43,
+      "pct_time_extreme": 0.725,
+      "note": "Single static standardization (StandardScaler fit on TRAIN=2019-12-31) + PCA fit on the same train slice, projected to full history. Kaiser eigenvalue>1 retention. composite = raw PC1 (unit-variance, NO rolling re-z). Removes production's rolling-3y-z on features AND rolling-3y-z on PC1 (the triple-normalization lag). PC2 eigenvalue 0.665 <= 1 (Kaiser): only PC1 retained. raw_cov sub-variant: PCA on the UNSCALED covariance of the same levels is dominated by the largest-variance series (lev_money, raw var >> others), which is why standardization matters; reported in meta only, never the composite."
+    },
+    {
+      "version": "v2",
+      "name": "V2 CFTC/Street best-practice (COT-index + %OI + flow)",
+      "bounded": true,
+      "latest": 85.541,
+      "first_flag": "2024-12-24",
+      "lead_weeks_vs_prod": 14,
+      "pct_time_extreme": 0.186,
+      "note": "inp.buyside_level() is already DV01 / 10y-equivalent weighted (aggregate lev+AM net DV01, $mm/bp) per the OFR convention, so this IS a DV01-weighted COT index \u2014 not a raw-contract COT index."
+    },
+    {
+      "version": "v3",
+      "name": "V3 EWMA/52w single-pass",
+      "bounded": false,
+      "latest": 0.605,
+      "first_flag": "2024-08-13",
+      "lead_weeks_vs_prod": 33,
+      "pct_time_extreme": 0.128,
+      "note": ""
+    },
+    {
+      "version": "v4",
+      "name": "V4 Curve (book-tilt vs momentum, PC2)",
+      "bounded": false,
+      "latest": 1.421,
+      "first_flag": "2026-03-03",
+      "lead_weeks_vs_prod": -48,
+      "pct_time_extreme": 0.123,
+      "note": "Two-dimension curve read: the RAW book tilt is ~flat (book_tilt ~ -5.18 $mm/bp) while MOMENTUM (EWMA-z hl=26) reads steepener-direction (+1.42). The raw book being ~flat and the momentum reading steepener are not in conflict: momentum measures drift vs recent history, not the absolute level. composite/curve = momentum; POSITIVE = crowded steepener."
+    },
+    {
+      "version": "v5",
+      "name": "V5 Kalman (deviation-\u03c3 / slope / acceleration)",
+      "bounded": false,
+      "latest": -0.403,
+      "first_flag": "2024-07-16",
+      "lead_weeks_vs_prod": 37,
+      "pct_time_extreme": 0.136,
+      "note": "Local-linear-trend Kalman on source=v0 (auto); headline=deviation. deviation>0 = above fair value (crowding building), slope>0 = positioning rising, acceleration>0 = accelerating."
+    }
+  ],
+  "v1_meta": {
+    "n_pcs_kaiser": 1,
+    "eigenvalues": [
+      2.0826762455244308,
+      0.6652618888681434,
+      0.289561865607426
+    ],
+    "explained_variance": [
+      0.6856547310368496,
+      0.21901625970967684,
+      0.09532900925347357
+    ],
+    "features_used": [
+      "lev_money",
+      "asset_mgr",
+      "front_long"
+    ]
+  },
+  "v2_meta": {
+    "cot_52_latest": 81.63600231032228,
+    "cot_156_latest": 89.44612996496701,
+    "z_52_latest": 1.393196856109465,
+    "oi_z_latest": 1.477356049237833,
+    "flow_z_latest": -0.6395022259445603,
+    "weights": {
+      "z_52": 0.5,
+      "oi_z": 0.3,
+      "flow_z": 0.2
+    }
+  },
+  "v4_meta": {
+    "book_tilt": -5.180426196627572,
+    "mom_latest": 1.4212688830616627,
+    "pca_pc2_curve": -0.14114896128656884,
+    "cot_front_long": 95.19559567486088
+  }
+}

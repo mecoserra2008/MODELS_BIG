@@ -1,0 +1,37 @@
+==============================================================================================================
+BASELINE reproduction (no purge, H=4, any-up):
+baseline (reproduce JSON ~0.5585)                    H= 4 thr= 0.0 emb= 0 | n=378 base=0.524 AUC=0.5585 ll=0.6861 brier=0.2465
+--------------------------------------------------------------------------------------------------------------
+B1  purge/embargo (honesty): keep=train[:start-H]
+baseline + purge=0                                   H= 4 thr= 0.0 emb= 0 | n=378 base=0.524 AUC=0.5585 ll=0.6861 brier=0.2465
+baseline + purge=4                                   H= 4 thr= 0.0 emb= 4 | n=378 base=0.524 AUC=0.5543 ll=0.685 brier=0.246
+--------------------------------------------------------------------------------------------------------------
+B2a horizon sweep (any-up, purged):
+horizon 4w                                           H= 4 thr= 0.0 emb= 4 | n=378 base=0.524 AUC=0.5543 ll=0.685 brier=0.246
+horizon 8w                                           H= 8 thr= 0.0 emb= 8 | n=374 base=0.572 AUC=0.4811 ll=0.6963 brier=0.2517
+horizon 13w                                          H=13 thr= 0.0 emb=13 | n=369 base=0.585 AUC=0.4442 ll=0.6989 brier=0.252
+--------------------------------------------------------------------------------------------------------------
+B2b material-selloff label (Δy>thr in %, purged, H=4 and H=8):
+material Δy>0.10                                     H= 4 thr= 0.1 emb= 4 | n=378 base=0.341 AUC=0.5113 ll=0.6447 brier=0.2261
+material Δy>0.15                                     H= 4 thr=0.15 emb= 4 | n=378 base=0.275 AUC=0.5377 ll=0.598 brier=0.2033
+material Δy>0.20                                     H= 4 thr= 0.2 emb= 4 | n=378 base=0.209 AUC=0.536 ll=0.5384 brier=0.1742
+material Δy>0.10                                     H= 8 thr= 0.1 emb= 8 | n=374 base=0.444 AUC=0.5221 ll=0.6914 brier=0.2494
+material Δy>0.15                                     H= 8 thr=0.15 emb= 8 | n=374 base=0.372 AUC=0.45 ll=0.6935 brier=0.2485
+material Δy>0.20                                     H= 8 thr= 0.2 emb= 8 | n=374 base=0.310 AUC=0.4532 ll=0.6566 brier=0.2286
+--------------------------------------------------------------------------------------------------------------
+B2c regime-conditioning features (purged, H=4 any-up):
+base + comp*extreme + comp*vol                       H= 4 thr= 0.0 emb= 4 | n=378 base=0.524 AUC=0.4747 ll=0.7024 brier=0.2545
+minimal {comp,chg,comp*extreme,vol}                  H= 4 thr= 0.0 emb= 4 | n=378 base=0.524 AUC=0.4658 ll=0.7174 brier=0.2619
+==============================================================================================================
+
+CONDITIONAL CONTRARIAN TEST (does fading crowded extremes work?)
+  H= 4w | crowded-long n= 83 P(selloff)=0.53 meanΔy= +3.7bp | crowded-short n= 84 P(rally)=0.51 meanΔy= -0.0bp | mid meanΔy= +2.1bp
+  H= 8w | crowded-long n= 79 P(selloff)=0.63 meanΔy= +7.9bp | crowded-short n= 84 P(rally)=0.46 meanΔy= +3.0bp | mid meanΔy= +3.4bp
+  H=13w | crowded-long n= 74 P(selloff)=0.66 meanΔy=+14.1bp | crowded-short n= 84 P(rally)=0.48 meanΔy= +7.0bp | mid meanΔy= +5.1bp
+
+TERCILE forward Δy (bp) by composite level (H=4w):
+                    n  meanbp  hit_up
+terc                                 
+low(short-crowd)  179    1.52    0.48
+mid               178    3.22    0.51
+high(long-crowd)  178    1.32    0.53

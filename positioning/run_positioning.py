@@ -104,6 +104,57 @@ def _fig_forward_prob(res, path):
     fig.tight_layout(); fig.savefig(path, dpi=200, bbox_inches="tight"); plt.close(fig)
 
 
+def _fig_conditional(res, path):
+    """Honest headline: historical P(correct contrarian call) at crowded extremes, by horizon.
+    Long side = P(selloff | crowded long); short side = P(rally | crowded short)."""
+    cond = res.latest.get("conditional_base_rates", {})
+    if not cond:
+        return
+    Hs = sorted(cond, key=int)
+    p_long = [cond[h]["crowded_long"]["p_selloff"] for h in Hs]
+    p_short = [cond[h]["crowded_short"]["p_rally"] for h in Hs]
+    bp_long = [cond[h]["crowded_long"]["mean_bp"] for h in Hs]
+    x = np.arange(len(Hs)); w = 0.38
+    fig, ax = plt.subplots(figsize=(8, 4.2))
+    b1 = ax.bar(x - w/2, p_long, w, color="#c00000", alpha=0.85, label="P(selloff | crowded LONG)")
+    b2 = ax.bar(x + w/2, p_short, w, color="#2e7d32", alpha=0.6, label="P(rally | crowded SHORT)")
+    ax.axhline(0.5, color="grey", ls="--", lw=0.8, label="coin flip")
+    for r, bp in zip(b1, bp_long):
+        ax.annotate(f"{bp:+.0f}bp", (r.get_x()+r.get_width()/2, r.get_height()),
+                    ha="center", va="bottom", fontsize=8)
+    reg = res.latest.get("regime_read", {})
+    ax.set_xticks(x); ax.set_xticklabels([f"{h}w" for h in Hs])
+    ax.set_ylim(0, 1); ax.set_ylabel("historical hit rate")
+    ax.set_title(f"Contrarian hit rate at crowded extremes (|z|>{reg.get('k',1.5)}) — "
+                 f"current regime: {reg.get('regime','?')}")
+    ax.legend(loc="upper left", fontsize=8)
+    fig.tight_layout(); fig.savefig(path, dpi=200, bbox_inches="tight"); plt.close(fig)
+
+
+def _fig_curve_crowding(res, path):
+    """Curve-crowding z: front-end (TU,FV) minus long-end (US,UB) net DV01 per category,
+    z-scored, + their aggregate. Positive = crowded steepener; negative = flattener."""
+    cc = res.curve_crowding.dropna(how="all")
+    cat_colors = {"lev_money": "#E5611F", "asset_mgr": "#2a78d6"}  # validated w/ #7030a0
+    fig, ax = plt.subplots(figsize=(12, 5))
+    for cat, color in cat_colors.items():
+        if cat in cc.columns:
+            s = cc[cat].dropna()
+            ax.plot(s.index, s.values, color=color, lw=0.9, alpha=0.8,
+                    label=CATEGORY_LABELS[cat])
+    agg = cc["aggregate_restd"].dropna()
+    ax.plot(agg.index, agg.values, color="#7030a0", lw=1.6,
+            label="Aggregate curve-crowding z (re-z of category mean)")
+    ax.axhline(SIGNAL_K_ENTRY, color="#c00000", ls="--", lw=0.8)
+    ax.axhline(-SIGNAL_K_ENTRY, color="#c00000", ls="--", lw=0.8)
+    ax.axhline(0, color="grey", lw=0.6)
+    reg = res.latest.get("curve_crowding", {})
+    ax.set_title("Curve positioning — front-end minus long-end net DV01 z "
+                 f"(+ = crowded steepener) — current: {reg.get('regime', '?')}")
+    ax.set_ylabel("z-score"); ax.legend(loc="upper left", fontsize=8)
+    fig.tight_layout(); fig.savefig(path, dpi=200, bbox_inches="tight"); plt.close(fig)
+
+
 def _fig_calibration(res, path):
     c = res.predictive.calibration
     fig, ax = plt.subplots(figsize=(5, 5))
@@ -168,6 +219,8 @@ def main(force: bool = False):
     _fig_loadings(res, RESULTS_DIR / "fig_pca_loadings.png")
     _fig_forward_prob(res, RESULTS_DIR / "fig_forward_prob.png")
     _fig_calibration(res, RESULTS_DIR / "fig_calibration.png")
+    _fig_conditional(res, RESULTS_DIR / "fig_conditional_baserates.png")
+    _fig_curve_crowding(res, RESULTS_DIR / "fig_curve_crowding.png")
 
     results = build_results(res)
     out = RESULTS_DIR / "positioning_score.json"

@@ -19,8 +19,8 @@ import numpy as np
 import pandas as pd
 
 from ..config import (
-    COT_PUBLICATION_LAG_BDAYS, FORWARD_HORIZON_WEEKS, LABEL_YIELD, SCORING_CATEGORIES,
-    SIGNAL_K_ENTRY, SIGNAL_K_EXIT, TRAIN_END, Z_LOOKBACK_LONG,
+    CONDITIONAL_HORIZONS, COT_PUBLICATION_LAG_BDAYS, FORWARD_HORIZON_WEEKS, LABEL_YIELD,
+    SCORING_CATEGORIES, SIGNAL_K_ENTRY, SIGNAL_K_EXIT, TRAIN_END, Z_LOOKBACK_LONG,
 )
 from . import aggregate, dv01, predictive, schema, signal
 from .normalize import rolling_zscore
@@ -37,6 +37,7 @@ class PositioningScore:
     predictive: predictive.PredictiveResult
     stance: pd.Series               # discrete contrarian {+1,0,-1}
     fut_dv01: pd.DataFrame          # futures panel with net_dv01 (for heatmap)
+    curve_crowding: pd.DataFrame    # per-category curve z + 'aggregate' (steepener +)
     latest: dict                    # latest-week snapshot (headline outputs)
 
 
@@ -113,15 +114,84 @@ def run_score(futures_raw: pd.DataFrame, cash_raw: pd.DataFrame,
     pred_feats = _predictive_features(comp_pub, ywk_pub)
     y_pub = ywk_pub[LABEL_YIELD]
     label = predictive.make_label(y_pub, forward_horizon)
-    pred = predictive.walk_forward(pred_feats, label)
+    # embargo = horizon: purge overlapping-label train rows so OOS metrics are leakage-free.
+    pred = predictive.walk_forward(pred_feats, label, embargo=forward_horizon)
+
+    # Honest interpretable overlay: historical conditional base rates at crowded extremes.
+    cond_stats = predictive.conditional_extreme_stats(
+        comp_pub, y_pub, horizons=CONDITIONAL_HORIZONS, k=k_entry)
+    regime_read = predictive.latest_regime_read(comp_pub, cond_stats, k=k_entry)
+
+    # --- Curve-crowding read: crowded steepener/flattener positioning vs the slope ---
+    curve_crowd = aggregate.curve_crowding(fut_dv01)
+    curve_read = _curve_crowding_read(curve_crowd, yields, pub_offset, k=k_entry)
 
     latest = _latest_snapshot(composite, factors, catdur, feat, stance, pred, fut_dv01)
+    latest["conditional_base_rates"] = cond_stats
+    latest["regime_read"] = regime_read
+    latest["curve_crowding"] = curve_read
     return PositioningScore(
         composite=composite, percentile=factors.percentile,
         equal_weight=factors.equal_weight, category_duration=catdur,
         feature_panel=feat, factors=factors, predictive=pred, stance=stance,
-        fut_dv01=fut_dv01, latest=latest,
+        fut_dv01=fut_dv01, curve_crowding=curve_crowd, latest=latest,
     )
+
+
+def _curve_crowding_read(curve_crowd: pd.DataFrame, yields: pd.DataFrame,
+                         pub_offset, k: float) -> dict:
+    """Curve-crowding snapshot + conditional 2s10s-slope base rates at extremes.
+
+    The re-standardized aggregate curve-crowding z (see aggregate.curve_crowding: the
+    raw mean of the two anticorrelated category z's is compressed and never reaches
+    +/-k, so extremes are defined on its re-z — same convention as the composite) is
+    publication-lagged exactly like the composite, then fed to the generic
+    conditional_extreme_stats with the weekly 2s10s SLOPE (DGS10 - DGS2, as-of the
+    publication grid) as the outcome series. Semantics for the slope outcome: the
+    generic 'p_selloff' (outcome rises) is here P(slope STEEPENS) -> p_steepen, and
+    'p_rally' (outcome falls) is P(slope FLATTENS) -> p_flatten; the z>+k bucket is a
+    crowded STEEPENER, z<-k a crowded FLATTENER, and mean_bp is the mean forward slope
+    change. So "does crowded steepener positioning precede flattening?" reads off
+    crowded_steepener: flattening dominates where p_steepen sits below 0.5 / mean_bp
+    is negative. Full-sample descriptive frequencies, not an OOS forecast.
+    """
+    agg = curve_crowd["aggregate_restd"]
+    curve_pub = pd.Series(agg.values, index=agg.index + pub_offset, name="curve_z")
+
+    cond: dict = {}
+    if "DGS2" in yields.columns and LABEL_YIELD in yields.columns:
+        ywk = _weekly_yields(yields, curve_pub.index)
+        ywk.index = curve_pub.index
+        slope = ywk[LABEL_YIELD] - ywk["DGS2"]
+        raw = predictive.conditional_extreme_stats(
+            curve_pub, slope, horizons=CONDITIONAL_HORIZONS, k=k)
+        for H, s in raw.items():
+            cond[H] = {
+                "crowded_steepener": {"n": s["crowded_long"]["n"],
+                                      "p_steepen": s["crowded_long"]["p_selloff"],
+                                      "mean_bp": s["crowded_long"]["mean_bp"]},
+                "crowded_flattener": {"n": s["crowded_short"]["n"],
+                                      "p_flatten": s["crowded_short"]["p_rally"],
+                                      "mean_bp": s["crowded_short"]["mean_bp"]},
+                "mid_mean_bp": s["mid_mean_bp"],
+            }
+
+    def last(s: pd.Series) -> float | None:
+        s = s.dropna()
+        return float(s.iloc[-1]) if len(s) else None
+
+    z = last(agg)
+    regime = ("crowded_steepener" if z is not None and z > k else
+              "crowded_flattener" if z is not None and z < -k else "neutral")
+    return {
+        "z_by_category": {c: last(curve_crowd[c])
+                          for c in ("lev_money", "asset_mgr") if c in curve_crowd},
+        "aggregate_z": last(curve_crowd["aggregate"]),   # raw mean of category z's
+        "aggregate_z_restd": z,                          # re-z'd mean (headline)
+        "regime": regime,
+        "k": k,
+        "conditional_slope_base_rates": cond,
+    }
 
 
 def _latest_snapshot(composite, factors, catdur, feat, stance, pred, fut_dv01) -> dict:
