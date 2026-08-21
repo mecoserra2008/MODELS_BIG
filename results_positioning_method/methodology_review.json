@@ -1,0 +1,88 @@
+{
+  "as_of": "2026-07-14",
+  "buyside_net_dv01_latest_mm_bp": 130.19645778510957,
+  "window_weeks": {
+    "prod_long": 156,
+    "short": 52
+  },
+  "responsiveness": [
+    {
+      "metric": "prod composite (2x 3y-z + PCA)",
+      "latest": 2.4920730550321575,
+      "threshold": 1.5,
+      "first_flag": "2026-01-20",
+      "weeks_since_flag": 25,
+      "pct_time_extreme": 0.3172541743970315
+    },
+    {
+      "metric": "3y z (single pass)",
+      "latest": 2.05265880451328,
+      "threshold": 1.5,
+      "first_flag": "2025-07-01",
+      "weeks_since_flag": 54,
+      "pct_time_extreme": 0.31275720164609055
+    },
+    {
+      "metric": "1y z (single pass)",
+      "latest": 1.3931968561094608,
+      "threshold": 1.5,
+      "first_flag": "2024-12-17",
+      "weeks_since_flag": 82,
+      "pct_time_extreme": 0.2841796875
+    },
+    {
+      "metric": "EWMA z (hl=26w)",
+      "latest": 1.1386926676200726,
+      "threshold": 1.5,
+      "first_flag": "2024-12-24",
+      "weeks_since_flag": 81,
+      "pct_time_extreme": 0.1455078125
+    },
+    {
+      "metric": "%OI then 1y z",
+      "latest": 1.4773560492379096,
+      "threshold": 1.5,
+      "first_flag": "2024-12-17",
+      "weeks_since_flag": 82,
+      "pct_time_extreme": 0.2861328125
+    },
+    {
+      "metric": "flow (13w chg) 1y z",
+      "latest": -0.6395022259445613,
+      "threshold": 1.5,
+      "first_flag": "2024-11-19",
+      "weeks_since_flag": 86,
+      "pct_time_extreme": 0.22354104846686448
+    },
+    {
+      "metric": "COT-index 3y (0-100)",
+      "latest": 89.44612996496699,
+      "threshold": 80.0,
+      "first_flag": "2025-07-01",
+      "weeks_since_flag": 54,
+      "pct_time_extreme": 0.3055555555555556
+    },
+    {
+      "metric": "COT-index 1y (0-100)",
+      "latest": 81.63600231032224,
+      "threshold": 80.0,
+      "first_flag": "2024-12-03",
+      "weeks_since_flag": 84,
+      "pct_time_extreme": 0.2724609375
+    },
+    {
+      "metric": "percentile 1y (0-100)",
+      "latest": 86.53846153846155,
+      "threshold": 80.0,
+      "first_flag": "2024-06-11",
+      "weeks_since_flag": 109,
+      "pct_time_extreme": 0.3134765625
+    }
+  ],
+  "curve_latest": {
+    "raw_front_minus_long_mm_bp": -2.5902130983137934,
+    "prod_z": 1.0668883136354317,
+    "z_1y": 1.3977859805735138,
+    "cot_index_1y": 95.19559567486091
+  }
+}

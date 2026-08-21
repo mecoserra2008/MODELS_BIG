@@ -31,6 +31,58 @@ def make_label(yields_weekly: pd.Series, horizon_weeks: int) -> pd.Series:
     return (fwd > 0).astype(float).where(fwd.notna())
 
 
+def conditional_extreme_stats(composite: pd.Series, yields_weekly: pd.Series,
+                              horizons=(4, 8, 13), k: float = 1.5) -> dict:
+    """Historical conditional base rates when positioning is at a crowded extreme.
+
+    An honest, interpretable complement to the (weak) logistic probability: it answers
+    "when the crowd was this stretched, what did yields do next?" rather than pretending
+    to a precise per-week probability. Full-sample descriptive frequencies (clearly
+    labelled as historical, not an OOS forecast).
+
+    For each horizon H (weeks) it reports, split by composite regime:
+      crowded_long (z> +k): P(selloff = yield up over H) and mean forward Δy in bp
+      crowded_short(z< -k): P(rally  = yield down over H) and mean forward Δy in bp
+      mid          (|z|<=k): mean forward Δy in bp (the unconditional-ish baseline)
+    The contrarian thesis holds where crowded_long P(selloff) and crowded_short P(rally)
+    sit meaningfully above 0.5. Empirically it is asymmetric (stronger on the long side)
+    and firmer at 8-13w than at 4w.
+    """
+    out = {}
+    for H in horizons:
+        fwd = yields_weekly.shift(-H) - yields_weekly
+        d = pd.concat([composite.rename("z"), fwd.rename("fwd")], axis=1).dropna()
+        lo, sh, mid = d[d.z > k], d[d.z < -k], d[d.z.abs() <= k]
+        out[str(H)] = {
+            "crowded_long": {
+                "n": int(len(lo)),
+                "p_selloff": float((lo.fwd > 0).mean()) if len(lo) else None,
+                "mean_bp": float(lo.fwd.mean() * 100) if len(lo) else None},
+            "crowded_short": {
+                "n": int(len(sh)),
+                "p_rally": float((sh.fwd < 0).mean()) if len(sh) else None,
+                "mean_bp": float(sh.fwd.mean() * 100) if len(sh) else None},
+            "mid_mean_bp": float(mid.fwd.mean() * 100) if len(mid) else None,
+        }
+    return out
+
+
+def latest_regime_read(composite: pd.Series, cond_stats: dict, k: float = 1.5) -> dict:
+    """Map the latest composite z to its crowded regime and pull the matching historical
+    conditional base rates (per horizon) — the honest headline the app should surface."""
+    z = float(composite.dropna().iloc[-1]) if composite.dropna().size else float("nan")
+    regime = "crowded_long" if z > k else "crowded_short" if z < -k else "neutral"
+    rows = {}
+    for H, s in cond_stats.items():
+        if regime == "crowded_long":
+            rows[H] = {"p_selloff": s["crowded_long"]["p_selloff"],
+                       "mean_bp": s["crowded_long"]["mean_bp"], "n": s["crowded_long"]["n"]}
+        elif regime == "crowded_short":
+            rows[H] = {"p_rally": s["crowded_short"]["p_rally"],
+                       "mean_bp": s["crowded_short"]["mean_bp"], "n": s["crowded_short"]["n"]}
+    return {"composite_z": z, "regime": regime, "k": k, "by_horizon": rows}
+
+
 def _pipeline() -> CalibratedClassifierCV:
     base = LogisticRegression(C=0.5, max_iter=1000)
     # Platt (sigmoid) calibration; cv=3 internal splits on the training slice only.
@@ -77,13 +129,16 @@ def _calibration_table(y: np.ndarray, p: np.ndarray, bins: int = 10) -> pd.DataF
 
 
 def walk_forward(features: pd.DataFrame, label: pd.Series,
-                 min_train: int = 156, step: int = 13) -> PredictiveResult:
+                 min_train: int = 156, step: int = 13, embargo: int = 0) -> PredictiveResult:
     """Expanding-window OOS probabilities + honest metrics.
 
     features   wide, causal (composite + its change + extremeness, etc.)
     label      binary forward selloff label (make_label)
     min_train  first training window length in weeks (default 3y)
     step       weeks predicted per fold before refitting (default ~quarter)
+    embargo    purge the last `embargo` training rows so the forward (horizon-week)
+               label of the newest train rows cannot overlap the test block's yields.
+               Pass the label horizon here (leakage-free OOS). 0 = legacy behaviour.
     """
     df = features.join(label.rename("_y")).dropna()
     X, y = df.drop(columns="_y"), df["_y"].values
@@ -94,8 +149,9 @@ def walk_forward(features: pd.DataFrame, label: pd.Series,
     start = min_train
     while start < n:
         end = min(start + step, n)
-        Xtr, ytr = X.iloc[:start].values, y[:start]
-        if len(np.unique(ytr)) < 2:
+        tr_end = max(0, start - embargo)   # embargo: drop overlapping-label train rows
+        Xtr, ytr = X.iloc[:tr_end].values, y[:tr_end]
+        if len(np.unique(ytr)) < 2 or len(ytr) < min_train // 2:
             start = end
             continue
         model = _pipeline().fit(Xtr, ytr)
@@ -113,7 +169,7 @@ def walk_forward(features: pd.DataFrame, label: pd.Series,
         "auc": float(roc_auc_score(yv, pv)) if len(np.unique(yv)) == 2 else float("nan"),
         "log_loss": float(log_loss(yv, pv, labels=[0, 1])) if len(pv) else float("nan"),
         "brier": float(brier_score_loss(yv, pv)) if len(pv) else float("nan"),
-        "horizon_note": "OOS via expanding-window walk-forward",
+        "horizon_note": "OOS via expanding-window walk-forward, horizon-embargo purged",
     }
     calib = _calibration_table(yv, pv)
 

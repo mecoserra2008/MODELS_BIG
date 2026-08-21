@@ -1,0 +1,391 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.5.11)  23 JUL 2026 15:23
+entering extended mode
+ restricted \write18 enabled.
+ %&-line parsing enabled.
+**session_report.tex
+(./session_report.tex
+LaTeX2e <2023-11-01> patch level 1
+L3 programming layer <2024-01-22>
+(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2023/05/17 v1.4n Standard LaTeX document class
+(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo
+File: size10.clo 2023/05/17 v1.4n Standard LaTeX file (size option)
+)
+\c@part=\count187
+\c@section=\count188
+\c@subsection=\count189
+\c@subsubsection=\count190
+\c@paragraph=\count191
+\c@subparagraph=\count192
+\c@figure=\count193
+\c@table=\count194
+\abovecaptionskip=\skip48
+\belowcaptionskip=\skip49
+\bibindent=\dimen140
+)
+(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty
+Package: geometry 2020/01/02 v5.9 Page Geometry
+
+(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty
+Package: keyval 2022/05/29 v1.15 key=value parser (DPC)
+\KV@toks@=\toks17
+)
+(/usr/share/texlive/texmf-dist/tex/generic/iftex/ifvtex.sty
+Package: ifvtex 2019/10/25 v1.7 ifvtex legacy package. Use iftex instead.
+
+(/usr/share/texlive/texmf-dist/tex/generic/iftex/iftex.sty
+Package: iftex 2022/02/03 v1.0f TeX engine tests
+))
+\Gm@cnth=\count195
+\Gm@cntv=\count196
+\c@Gm@tempcnt=\count197
+\Gm@bindingoffset=\dimen141
+\Gm@wd@mp=\dimen142
+\Gm@odd@mp=\dimen143
+\Gm@even@mp=\dimen144
+\Gm@layoutwidth=\dimen145
+\Gm@layoutheight=\dimen146
+\Gm@layouthoffset=\dimen147
+\Gm@layoutvoffset=\dimen148
+\Gm@dimlist=\toks18
+)
+(/usr/share/texlive/texmf-dist/tex/latex/psnfss/helvet.sty
+Package: helvet 2020/03/25 PSNFSS-v9.3 (WaS) 
+)
+(/usr/share/texlive/texmf-dist/tex/latex/graphics/graphicx.sty
+Package: graphicx 2021/09/16 v1.2d Enhanced LaTeX Graphics (DPC,SPQR)
+
+(/usr/share/texlive/texmf-dist/tex/latex/graphics/graphics.sty
+Package: graphics 2022/03/10 v1.4e Standard LaTeX Graphics (DPC,SPQR)
+
+(/usr/share/texlive/texmf-dist/tex/latex/graphics/trig.sty
+Package: trig 2021/08/11 v1.11 sin cos tan (DPC)
+)
+(/usr/share/texlive/texmf-dist/tex/latex/graphics-cfg/graphics.cfg
+File: graphics.cfg 2016/06/04 v1.11 sample graphics configuration
+)
+Package graphics Info: Driver file: pdftex.def on input line 107.
+
+(/usr/share/texlive/texmf-dist/tex/latex/graphics-def/pdftex.def
+File: pdftex.def 2022/09/22 v1.2b Graphics/color driver for pdftex
+))
+\Gin@req@height=\dimen149
+\Gin@req@width=\dimen150
+)
+(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty
+Package: booktabs 2020/01/12 v1.61803398 Publication quality tables
+\heavyrulewidth=\dimen151
+\lightrulewidth=\dimen152
+\cmidrulewidth=\dimen153
+\belowrulesep=\dimen154
+\belowbottomsep=\dimen155
+\aboverulesep=\dimen156
+\abovetopsep=\dimen157
+\cmidrulesep=\dimen158
+\cmidrulekern=\dimen159
+\defaultaddspace=\dimen160
+\@cmidla=\count198
+\@cmidlb=\count199
+\@aboverulesep=\dimen161
+\@belowrulesep=\dimen162
+\@thisruleclass=\count266
+\@lastruleclass=\count267
+\@thisrulewidth=\dimen163
+)
+(/usr/share/texlive/texmf-dist/tex/latex/xcolor/xcolor.sty
+Package: xcolor 2023/11/15 v3.01 LaTeX color extensions (UK)
+
+(/usr/share/texlive/texmf-dist/tex/latex/graphics-cfg/color.cfg
+File: color.cfg 2016/01/02 v1.6 sample color configuration
+)
+Package xcolor Info: Driver file: pdftex.def on input line 274.
+
+(/usr/share/texlive/texmf-dist/tex/latex/graphics/mathcolor.ltx)
+Package xcolor Info: Model `cmy' substituted by `cmy0' on input line 1350.
+Package xcolor Info: Model `hsb' substituted by `rgb' on input line 1354.
+Package xcolor Info: Model `RGB' extended on input line 1366.
+Package xcolor Info: Model `HTML' substituted by `rgb' on input line 1368.
+Package xcolor Info: Model `Hsb' substituted by `hsb' on input line 1369.
+Package xcolor Info: Model `tHsb' substituted by `hsb' on input line 1370.
+Package xcolor Info: Model `HSB' substituted by `hsb' on input line 1371.
+Package xcolor Info: Model `Gray' substituted by `gray' on input line 1372.
+Package xcolor Info: Model `wave' substituted by `hsb' on input line 1373.
+)
+(/usr/share/texlive/texmf-dist/tex/latex/fancyhdr/fancyhdr.sty
+Package: fancyhdr 2022/11/09 v4.1 Extensive control of page headers and footers
+
+\f@nch@headwidth=\skip50
+\f@nch@O@elh=\skip51
+\f@nch@O@erh=\skip52
+\f@nch@O@olh=\skip53
+\f@nch@O@orh=\skip54
+\f@nch@O@elf=\skip55
+\f@nch@O@erf=\skip56
+\f@nch@O@olf=\skip57
+\f@nch@O@orf=\skip58
+)
+(/usr/share/texlive/texmf-dist/tex/latex/float/float.sty
+Package: float 2001/11/08 v1.3d Float enhancements (AL)
+\c@float@type=\count268
+\float@exts=\toks19
+\float@box=\box51
+\@float@everytoks=\toks20
+\@floatcapt=\box52
+)
+(/usr/share/texlive/texmf-dist/tex/latex/tools/array.sty
+Package: array 2023/10/16 v2.5g Tabular extension package (FMi)
+\col@sep=\dimen164
+\ar@mcellbox=\box53
+\extrarowheight=\dimen165
+\NC@list=\toks21
+\extratabsurround=\skip59
+\backup@length=\skip60
+\ar@cellbox=\box54
+)
+LaTeX Font Info:    Trying to load font information for OT1+phv on input line 1
+5.
+
+(/usr/share/texlive/texmf-dist/tex/latex/psnfss/ot1phv.fd
+File: ot1phv.fd 2020/03/25 scalable font definitions for OT1/phv.
+)
+(/usr/share/texlive/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
+File: l3backend-pdftex.def 2024-01-04 L3 backend support: PDF output (pdfTeX)
+\l__color_backend_stack_int=\count269
+\l__pdf_internal_box=\box55
+)
+(./session_report.aux)
+\openout1 = `session_report.aux'.
+
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 15.
+LaTeX Font Info:    ... okay on input line 15.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 15.
+LaTeX Font Info:    ... okay on input line 15.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 15.
+LaTeX Font Info:    ... okay on input line 15.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 15.
+LaTeX Font Info:    ... okay on input line 15.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 15.
+LaTeX Font Info:    ... okay on input line 15.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 15.
+LaTeX Font Info:    ... okay on input line 15.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 15.
+LaTeX Font Info:    ... okay on input line 15.
+
+*geometry* driver: auto-detecting
+*geometry* detected driver: pdftex
+*geometry* verbose mode - [ preamble ] result:
+* driver: pdftex
+* paper: a4paper
+* layout: <same size as paper>
+* layoutoffset:(h,v)=(0.0pt,0.0pt)
+* modes: 
+* h-part:(L,W,R)=(45.52458pt, 506.45871pt, 45.52458pt)
+* v-part:(T,H,B)=(45.52458pt, 753.99768pt, 45.52458pt)
+* \paperwidth=597.50787pt
+* \paperheight=845.04684pt
+* \textwidth=506.45871pt
+* \textheight=753.99768pt
+* \oddsidemargin=-26.7454pt
+* \evensidemargin=-26.7454pt
+* \topmargin=-63.7454pt
+* \headheight=12.0pt
+* \headsep=25.0pt
+* \topskip=10.0pt
+* \footskip=30.0pt
+* \marginparwidth=57.0pt
+* \marginparsep=11.0pt
+* \columnsep=10.0pt
+* \skip\footins=9.0pt plus 4.0pt minus 2.0pt
+* \hoffset=0.0pt
+* \voffset=0.0pt
+* \mag=1000
+* \@twocolumnfalse
+* \@twosidefalse
+* \@mparswitchfalse
+* \@reversemarginfalse
+* (1in=72.27pt=25.4mm, 1cm=28.453pt)
+
+(/usr/share/texlive/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
+[Loading MPS to PDF converter (version 2006.09.02).]
+\scratchcounter=\count270
+\scratchdimen=\dimen166
+\scratchbox=\box56
+\nofMPsegments=\count271
+\nofMParguments=\count272
+\everyMPshowfont=\toks22
+\MPscratchCnt=\count273
+\MPscratchDim=\dimen167
+\MPnumerator=\count274
+\makeMPintoPDFobject=\count275
+\everyMPtoPDFconversion=\toks23
+) (/usr/share/texlive/texmf-dist/tex/latex/epstopdf-pkg/epstopdf-base.sty
+Package: epstopdf-base 2020-01-24 v2.11 Base part for package epstopdf
+Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 4
+85.
+
+(/usr/share/texlive/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg
+File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
+e
+))
+LaTeX Font Info:    External font `cmex10' loaded for size
+(Font)              <9> on input line 22.
+LaTeX Font Info:    External font `cmex10' loaded for size
+(Font)              <6> on input line 22.
+LaTeX Font Info:    External font `cmex10' loaded for size
+(Font)              <5> on input line 22.
+LaTeX Font Info:    External font `cmex10' loaded for size
+(Font)              <7> on input line 30.
+
+Underfull \hbox (badness 3029) in paragraph at lines 37--37
+[]|\OT1/phv/m/n/10 all 95% CIs in-clude 0.5;
+ []
+
+
+Underfull \hbox (badness 7777) in paragraph at lines 41--41
+[]|\OT1/phv/m/n/10 CRPS 16.05bp base vs
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 42--42
+[]|\OT1/phv/m/n/10 P(touch 5.00%)=11%,
+ []
+
+
+Underfull \hbox (badness 1845) in paragraph at lines 42--42
+\OT1/phv/m/n/10 P(touch 4.25%)=9%; 10M
+ []
+
+
+Underfull \hbox (badness 2680) in paragraph at lines 46--46
+[]|$\OT1/cmr/m/n/10 +0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 215$ \OT1/phv/m/n/10 ($
+\OML/cmm/m/it/10 t[]\OT1/cmr/m/n/10 2\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 6$\OT1/p
+hv/m/n/10 ) vs $\OT1/cmr/m/n/10 +0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 132$
+ []
+
+LaTeX Font Info:    Trying to load font information for TS1+phv on input line 4
+7.
+(/usr/share/texlive/texmf-dist/tex/latex/psnfss/ts1phv.fd
+File: ts1phv.fd 2020/03/25 scalable font definitions for TS1/phv.
+)
+<../results_rates_study/fig_outlook.png, id=1, 683.31285pt x 297.39105pt>
+File: ../results_rates_study/fig_outlook.png Graphic file (type png)
+<use ../results_rates_study/fig_outlook.png>
+Package pdftex.def Info: ../results_rates_study/fig_outlook.png  used on input 
+line 58.
+(pdftex.def)             Requested size: 455.80974pt x 198.38425pt.
+ [1{/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}{/usr/share/texlive/texmf
+-dist/fonts/enc/dvips/base/8r.enc}
+
+]
+<../positioning/results/fig_positioning_composite.png, id=16, 859.65166pt x 353
+.03896pt>
+File: ../positioning/results/fig_positioning_composite.png Graphic file (type p
+ng)
+<use ../positioning/results/fig_positioning_composite.png>
+Package pdftex.def Info: ../positioning/results/fig_positioning_composite.png  
+used on input line 70.
+(pdftex.def)             Requested size: 481.13422pt x 197.59271pt.
+<../positioning/results/fig_positioning_heatmap.png, id=17, 607.7907pt x 222.95
+296pt>
+File: ../positioning/results/fig_positioning_heatmap.png Graphic file (type png
+)
+<use ../positioning/results/fig_positioning_heatmap.png>
+Package pdftex.def Info: ../positioning/results/fig_positioning_heatmap.png  us
+ed on input line 71.
+(pdftex.def)             Requested size: 430.49298pt x 157.91667pt.
+ [2 <../results_rates_study/fig_outlook.png> <../positioning/results/fig_positi
+oning_composite.png> <../positioning/results/fig_positioning_heatmap.png>]
+<../positioning/results/fig_curve_raw_dv01.png, id=24, 860.013pt x 497.9403pt>
+File: ../positioning/results/fig_curve_raw_dv01.png Graphic file (type png)
+<use ../positioning/results/fig_curve_raw_dv01.png>
+Package pdftex.def Info: ../positioning/results/fig_curve_raw_dv01.png  used on
+ input line 83.
+(pdftex.def)             Requested size: 481.13422pt x 278.57114pt.
+<../results_rates_study/fig_conditional.png, id=25, 570.933pt x 280.76895pt>
+File: ../results_rates_study/fig_conditional.png Graphic file (type png)
+<use ../results_rates_study/fig_conditional.png>
+Package pdftex.def Info: ../results_rates_study/fig_conditional.png  used on in
+put line 104.
+(pdftex.def)             Requested size: 405.1685pt x 199.25737pt.
+ [3 <../positioning/results/fig_curve_raw_dv01.png>]
+<../results_rates_study/fig_heston_fan.png, id=30, 751.608pt x 310.0383pt>
+File: ../results_rates_study/fig_heston_fan.png Graphic file (type png)
+<use ../results_rates_study/fig_heston_fan.png>
+Package pdftex.def Info: ../results_rates_study/fig_heston_fan.png  used on inp
+ut line 131.
+(pdftex.def)             Requested size: 481.13422pt x 198.4664pt.
+<../results_rates_study/fig_variant_scoreboard.png, id=31, 859.65166pt x 266.67
+63pt>
+File: ../results_rates_study/fig_variant_scoreboard.png Graphic file (type png)
+
+<use ../results_rates_study/fig_variant_scoreboard.png>
+Package pdftex.def Info: ../results_rates_study/fig_variant_scoreboard.png  use
+d on input line 132.
+(pdftex.def)             Requested size: 481.13422pt x 149.25632pt.
+ [4 <../results_rates_study/fig_conditional.png> <../results_rates_study/fig_he
+ston_fan.png>]
+<../results_oil_rates/fig_decomposition.png, id=37, 787.743pt x 280.76895pt>
+File: ../results_oil_rates/fig_decomposition.png Graphic file (type png)
+<use ../results_oil_rates/fig_decomposition.png>
+Package pdftex.def Info: ../results_oil_rates/fig_decomposition.png  used on in
+put line 153.
+(pdftex.def)             Requested size: 481.13422pt x 171.49158pt.
+<../results_oil_rates/fig_influence.png, id=38, 565.8741pt x 353.03896pt>
+File: ../results_oil_rates/fig_influence.png Graphic file (type png)
+<use ../results_oil_rates/fig_influence.png>
+Package pdftex.def Info: ../results_oil_rates/fig_influence.png  used on input 
+line 175.
+(pdftex.def)             Requested size: 314.00192pt x 195.90662pt.
+<../results_oil_rates/fig_shock_type.png, id=39, 787.743pt x 286.55055pt>
+File: ../results_oil_rates/fig_shock_type.png Graphic file (type png)
+<use ../results_oil_rates/fig_shock_type.png>
+Package pdftex.def Info: ../results_oil_rates/fig_shock_type.png  used on input
+ line 176.
+(pdftex.def)             Requested size: 405.1685pt x 147.38498pt.
+
+[5 <../results_rates_study/fig_variant_scoreboard.png> <../results_oil_rates/fi
+g_decomposition.png>] [6 <../results_oil_rates/fig_influence.png> <../results_o
+il_rates/fig_shock_type.png>]
+Overfull \hbox (47.69202pt too wide) in paragraph at lines 215--228
+\OT1/cmtt/m/n/10 python -m rates[]study.run --report $\OMS/cmsy/m/n/10 ^^A$ \OT
+1/cmtt/m/n/10 python -m rates[]study.stoch[]validation $\OMS/cmsy/m/n/10 ^^A$ \
+OT1/cmtt/m/n/10 python -m rates[]study.stochastic
+ []
+
+
+Overfull \hbox (6.85551pt too wide) in paragraph at lines 230--241
+\OT1/phv/m/n/10 nite self-recursion (62 call sites; the true source of the ``Ou
+t of stack space'' fail-ures); fixed in \OT1/cmtt/m/n/10 modPNL[]reorganized.tx
+t\OT1/phv/m/n/10 .
+ []
+
+[7] (./session_report.aux)
+ ***********
+LaTeX2e <2023-11-01> patch level 1
+L3 programming layer <2024-01-22>
+ ***********
+ ) 
+Here is how much of TeX's memory you used:
+ 2937 strings out of 476182
+ 47835 string characters out of 5795595
+ 1938975 words of memory out of 5000000
+ 24922 multiletter control sequences out of 15000+600000
+ 573397 words of font info for 60 fonts, out of 8000000 for 9000
+ 14 hyphenation exceptions out of 8191
+ 57i,11n,65p,230b,323s stack positions out of 10000i,1000n,20000p,200000b,200000s
+</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></us
+r/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/share
+/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texliv
+e/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texlive/texmf-
+dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/f
+onts/type1/public/amsfonts/cm/cmsy9.pfb></usr/share/texlive/texmf-dist/fonts/ty
+pe1/public/amsfonts/cm/cmtt10.pfb></usr/share/texlive/texmf-dist/fonts/type1/ur
+w/helvetic/uhvb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/helvetic/u
+hvr8a.pfb>
+Output written on session_report.pdf (7 pages, 1416233 bytes).
+PDF statistics:
+ 95 PDF objects out of 1000 (max. 8388607)
+ 47 compressed objects within 1 object stream
+ 0 named destinations out of 1000 (max. 500000)
+ 51 words of extra memory for PDF output out of 10000 (max. 10000000)
+
